@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist-gate",
+    "incremental": false
+  },
+  "include": ["src/**/*.ts", "test/gate/**/*.ts"],
+  "exclude": ["node_modules", "dist", "dist-gate", "**/*.spec.ts"]
+}

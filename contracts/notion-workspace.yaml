@@ -1,0 +1,837 @@
+# The physical Notion schema of the system, and the binding of the canonical model to it by names.
+#
+# `databases` lists the eleven databases with their icon and properties by name:
+# relations name their target database and the paired property, select, multi-select and status
+# properties name their options, formulas carry their expression. `binding` has the shape of
+# `infra/notion/mapping.yaml` with names where the binding file has ids: a canonical type points at
+# a database title, a field at a property of that database, an option at an option name, a signal
+# at a formula property.
+#
+# Edited by hand. `notion build` builds the databases from `databases` and writes the binding from
+# `binding`; the gate builds its workspace from the same file. Run again, `notion build` brings the
+# databases of its ledger to this file, except formula expressions, which a person enters by hand;
+# `notion check` shows where a workspace differs from it.
+
+databases:
+  - title: Areas of Focus
+    icon:
+      type: emoji
+      emoji: 🧭
+    properties:
+      ⚡ Tasks:
+        type: relation
+        target: Tasks
+        synced: 🧭 Areas of Focus
+      🔭 Objectives:
+        type: relation
+        target: Objectives
+        synced: 🧭 Areas of Focus
+      🥷🏻 Identities:
+        type: relation
+        target: Identities
+        synced: 🧭 Areas of Focus
+      🦥 Habits:
+        type: relation
+        target: Habits
+        synced: 🧭 Areas of Focus
+      🚀 Projects:
+        type: relation
+        target: Projects
+        synced: 🧭 Areas of Focus
+      Mode:
+        type: select
+        options:
+          - name: Advance
+            color: purple
+          - name: Maintain
+            color: blue
+          - name: Minimum
+            color: green
+      Name:
+        type: title
+  - title: Context
+    icon:
+      type: icon
+      name: bookmark
+      color: gray
+    properties:
+      Created time:
+        type: created_time
+      Name:
+        type: title
+  - title: Habits
+    icon:
+      type: emoji
+      emoji: 🦥
+    properties:
+      ⚡ Tasks:
+        type: relation
+        target: Tasks
+        synced: 🦥 Habits
+      🔬 Key Results:
+        type: relation
+        target: Key Results
+        synced: 🦥 Habits
+      🥷🏻 Identities:
+        type: relation
+        target: Identities
+        synced: 🦥 Habits
+      🧭 Areas of Focus:
+        type: relation
+        target: Areas of Focus
+        synced: 🦥 Habits
+      🚀 Projects:
+        type: relation
+        target: Projects
+        synced: 🦥 Habits
+      After (habit):
+        type: relation
+        target: Habits
+        synced: Before (habit)
+      After (min):
+        type: number
+        format: number
+      After (trigger):
+        type: relation
+        target: Trigger
+        synced: null
+      Before (habit):
+        type: relation
+        target: Habits
+        synced: After (habit)
+      Context:
+        type: relation
+        target: Context
+        synced: null
+      Created time:
+        type: created_time
+      Done:
+        type: formula
+        expression: prop("⚡ Tasks").filter(current.prop("Status") == "Done").length()
+      Failed:
+        type: formula
+        expression: prop("⚡ Tasks").filter(current.prop("Status") == "Failed").length()
+      Lifecycle:
+        type: select
+        options:
+          - name: Designed
+            color: gray
+          - name: Installing
+            color: brown
+          - name: Stabilizing
+            color: purple
+          - name: Maintenance
+            color: blue
+          - name: Retired
+            color: green
+      Name:
+        type: title
+      Remind before:
+        type: number
+        format: number
+      Streak:
+        type: formula
+        expression: |-
+          let(
+              history,
+                prop("⚡ Tasks")
+                  .filter(current.prop("Status") == "Done" || current.prop("Status") == "Failed")
+                  .sort(current.prop("Created time"))
+                  .reverse(),
+              let(broken, history.findIndex(current.prop("Status") == "Failed"),
+                if(broken == -1, history.length(), broken))
+            )
+      Tags:
+        type: relation
+        target: Tags
+        synced: null
+  - title: Identities
+    icon:
+      type: emoji
+      emoji: 🥷🏻
+    properties:
+      🦥 Habits:
+        type: relation
+        target: Habits
+        synced: 🥷🏻 Identities
+      🧭 Areas of Focus:
+        type: relation
+        target: Areas of Focus
+        synced: 🥷🏻 Identities
+      Name:
+        type: title
+  - title: Inbox
+    icon:
+      type: emoji
+      emoji: 📨
+    properties:
+      Created time:
+        type: created_time
+      Days in column:
+        type: formula
+        expression: 'dateBetween(now(), prop("Created time"), "days") >= 3 ? style(dateBetween(now(),
+          prop("Created time"), "days") + " days", dateBetween(now(), prop("Created time"), "days")
+          == 3 ? "yellow" : (dateBetween(now(), prop("Created time"), "days") < 7 ? "orange" :
+          "red")) : ""'
+      Name:
+        type: title
+      Text:
+        type: rich_text
+  - title: Key Results
+    icon:
+      type: emoji
+      emoji: 🔬
+    properties:
+      ⚡ Tasks:
+        type: relation
+        target: Tasks
+        synced: 🔬 Key Results
+      🔭 Objectives:
+        type: relation
+        target: Objectives
+        synced: 🔬 Key Results
+      🦥 Habits:
+        type: relation
+        target: Habits
+        synced: 🔬 Key Results
+      🚀 Projects:
+        type: relation
+        target: Projects
+        synced: 🔬 Key Results
+      Created time:
+        type: created_time
+      Name:
+        type: title
+  - title: Objectives
+    icon:
+      type: emoji
+      emoji: 🔭
+    properties:
+      🔬 Key Results:
+        type: relation
+        target: Key Results
+        synced: 🔭 Objectives
+      🧭 Areas of Focus:
+        type: relation
+        target: Areas of Focus
+        synced: 🔭 Objectives
+      Created time:
+        type: created_time
+      Name:
+        type: title
+  - title: Projects
+    icon:
+      type: emoji
+      emoji: 🚀
+    properties:
+      ⚡ Tasks:
+        type: relation
+        target: Tasks
+        synced: 🚀 Projects
+      🔬 Key Results:
+        type: relation
+        target: Key Results
+        synced: 🚀 Projects
+      🦥 Habits:
+        type: relation
+        target: Habits
+        synced: 🚀 Projects
+      🧭 Areas of Focus:
+        type: relation
+        target: Areas of Focus
+        synced: 🚀 Projects
+      🧭 Areas of Focus (c):
+        type: formula
+        expression: |-
+          lets(
+            projectAreas,
+              prop("🧭 Areas of Focus"),
+
+            krAreas,
+              prop("🔬 Key Results")
+                .map(current.prop("🔭 Objectives"))
+                .flat()
+                .map(current.prop("🧭 Areas of Focus"))
+                .flat(),
+
+            projectAreas
+              .concat(krAreas)
+              .unique()
+          )
+      Blocked:
+        type: formula
+        expression: '(prop("Blocked by").empty() || prop("Blocked by").every(current.prop("Status") ==
+          "Done" || current.prop("Status") == "Canceled")) ? style("") : style("Blocked", "b",
+          "red")'
+      Blocked by:
+        type: relation
+        target: Projects
+        synced: Blocking
+      Blocking:
+        type: relation
+        target: Projects
+        synced: Blocked by
+      Created time:
+        type: created_time
+      Name:
+        type: title
+      Parent project:
+        type: relation
+        target: Projects
+        synced: Sub-project
+      Priority:
+        type: select
+        options:
+          - name: Low
+            color: green
+          - name: Medium
+            color: yellow
+          - name: High
+            color: red
+      Status:
+        type: status
+        options:
+          - name: Planning
+            color: yellow
+          - name: Active
+            color: blue
+          - name: Paused
+            color: purple
+          - name: Done
+            color: green
+          - name: Canceled
+            color: red
+      Sub-project:
+        type: relation
+        target: Projects
+        synced: Parent project
+      Tags:
+        type: relation
+        target: Tags
+        synced: null
+  - title: Tags
+    icon:
+      type: icon
+      name: tag
+      color: gray
+    properties:
+      Created time:
+        type: created_time
+      Name:
+        type: title
+  - title: Tasks
+    icon:
+      type: emoji
+      emoji: ⚡
+    properties:
+      🔬 Key Results:
+        type: relation
+        target: Key Results
+        synced: ⚡ Tasks
+      🦥 Habits:
+        type: relation
+        target: Habits
+        synced: ⚡ Tasks
+      🧭 Areas of Focus:
+        type: relation
+        target: Areas of Focus
+        synced: ⚡ Tasks
+      🧭 Areas of Focus (c):
+        type: formula
+        expression: |-
+          lets(
+            taskAreas,
+              prop("🧭 Areas of Focus"),
+
+            projectAreas,
+              prop("🚀 Projects")
+                .map(current.prop("🧭 Areas of Focus"))
+                .flat(),
+
+            habitAreas,
+              prop("🦥 Habits")
+                .map(current.prop("🧭 Areas of Focus"))
+                .flat(),
+
+            taskKRAreas,
+              prop("🔬 Key Results")
+                .map(current.prop("🔭 Objectives"))
+                .flat()
+                .map(current.prop("🧭 Areas of Focus"))
+                .flat(),
+
+            projectKRAreas,
+              prop("🚀 Projects")
+                .map(current.prop("🔬 Key Results"))
+                .flat()
+                .map(current.prop("🔭 Objectives"))
+                .flat()
+                .map(current.prop("🧭 Areas of Focus"))
+                .flat(),
+
+            habitKRAreas,
+              prop("🦥 Habits")
+                .map(current.prop("🔬 Key Results"))
+                .flat()
+                .map(current.prop("🔭 Objectives"))
+                .flat()
+                .map(current.prop("🧭 Areas of Focus"))
+                .flat(),
+
+            taskAreas
+              .concat(projectAreas)
+              .concat(habitAreas)
+              .concat(taskKRAreas)
+              .concat(projectKRAreas)
+              .concat(habitKRAreas)
+              .unique()
+          )
+      🚀 Projects:
+        type: relation
+        target: Projects
+        synced: ⚡ Tasks
+      Blocked:
+        type: formula
+        expression: '(prop("Blocked by").empty() || prop("Blocked by").every(current.prop("Status") ==
+          "Done" || current.prop("Status") == "Canceled")) ? style("") : style("Blocked", "b",
+          "red")'
+      Blocked by:
+        type: relation
+        target: Tasks
+        synced: Blocking
+      Blocking:
+        type: relation
+        target: Tasks
+        synced: Blocked by
+      Context:
+        type: relation
+        target: Context
+        synced: null
+      Created time:
+        type: created_time
+      Date:
+        type: date
+      Days in column:
+        type: formula
+        expression: 'prop("Status") == "Next Action" && dateBetween(now(), prop("Last edited time"), "days")
+          > 2 ? style(dateBetween(now(), prop("Last edited time"), "days") + " days",
+          dateBetween(now(), prop("Last edited time"), "days") == 3 ? "yellow" : (dateBetween(now(),
+          prop("Last edited time"), "days") < 7 ? "orange" : "red")) : ""'
+      Deadline:
+        type: date
+      Effort points:
+        type: select
+        options:
+          - name: "1"
+            color: default
+          - name: "2"
+            color: green
+          - name: "3"
+            color: blue
+          - name: "5"
+            color: yellow
+          - name: "8"
+            color: orange
+          - name: "13"
+            color: red
+          - name: "21"
+            color: purple
+      Last edited time:
+        type: last_edited_time
+      Name:
+        type: title
+      Remind:
+        type: number
+        format: number
+      Status:
+        type: status
+        options:
+          - name: Next Action
+            color: green
+          - name: Scheduled
+            color: purple
+          - name: Waiting For
+            color: blue
+          - name: Someday/Maybe
+            color: yellow
+          - name: Hidden
+            color: default
+          - name: Canceled
+            color: gray
+          - name: Done
+            color: green
+          - name: Failed
+            color: red
+      Tags:
+        type: relation
+        target: Tags
+        synced: null
+      Tags (c):
+        type: formula
+        expression: |-
+          prop("Tags")
+            .concat(
+              prop("🚀 Projects")
+                .map(current.prop("Tags"))
+                .flat()
+            )
+            .concat(
+              prop("🦥 Habits")
+                .map(current.prop("Tags"))
+                .flat()
+            )
+            .unique()
+  - title: Trigger
+    icon:
+      type: icon
+      name: flash
+      color: gray
+    properties:
+      Name:
+        type: title
+binding:
+  data_sources:
+    identity: Identities
+    area_of_focus: Areas of Focus
+    objective: Objectives
+    key_result: Key Results
+    project: Projects
+    behavior_system: Habits
+    task: Tasks
+    inbox_item: Inbox
+  fields:
+    identity:
+      name:
+        kind: native
+        property: Name
+      meaning:
+        kind: page_body
+      principles:
+        kind: page_body
+      boundaries:
+        kind: page_body
+      areas_of_focus:
+        kind: relation
+        twoWay: true
+        property: 🧭 Areas of Focus
+        database: Areas of Focus
+        syncedProperty: 🥷🏻 Identities
+      behavior_systems:
+        kind: relation
+        twoWay: true
+        property: 🦥 Habits
+        database: Habits
+        syncedProperty: 🥷🏻 Identities
+    area_of_focus:
+      name:
+        kind: native
+        property: Name
+      standard:
+        kind: gbrain
+      mode:
+        kind: native
+        property: Mode
+      signals_to_watch:
+        kind: page_body
+      current_concerns:
+        kind: page_body
+      identities:
+        kind: relation
+        twoWay: true
+        property: 🥷🏻 Identities
+        database: Identities
+        syncedProperty: 🧭 Areas of Focus
+      objectives:
+        kind: relation
+        twoWay: true
+        property: 🔭 Objectives
+        database: Objectives
+        syncedProperty: 🧭 Areas of Focus
+      projects:
+        kind: relation
+        twoWay: true
+        property: 🚀 Projects
+        database: Projects
+        syncedProperty: 🧭 Areas of Focus
+      behavior_systems:
+        kind: relation
+        twoWay: true
+        property: 🦥 Habits
+        database: Habits
+        syncedProperty: 🧭 Areas of Focus
+      tasks:
+        kind: relation
+        twoWay: true
+        property: ⚡ Tasks
+        database: Tasks
+        syncedProperty: 🧭 Areas of Focus
+    objective:
+      desired_change:
+        kind: native
+        property: Name
+      why_now:
+        kind: absent
+        reason: L2 structure is not complete
+      time_horizon:
+        kind: absent
+        reason: L2 structure is not complete
+      key_results:
+        kind: relation
+        twoWay: true
+        property: 🔬 Key Results
+        database: Key Results
+        syncedProperty: 🔭 Objectives
+      supports_area_of_focus:
+        kind: relation
+        twoWay: true
+        property: 🧭 Areas of Focus
+        database: Areas of Focus
+        syncedProperty: 🔭 Objectives
+      supporting_projects:
+        kind: traversed
+        rule: through_key_results
+        via: 🔬 Key Results
+      supporting_behavior_systems:
+        kind: traversed
+        rule: through_key_results
+        via: 🔬 Key Results
+      review_notes:
+        kind: absent
+        reason: L2 structure is not complete
+    key_result:
+      name:
+        kind: native
+        property: Name
+      objective:
+        kind: relation
+        twoWay: true
+        property: 🔭 Objectives
+        database: Objectives
+        syncedProperty: 🔬 Key Results
+      supporting_projects:
+        kind: relation
+        twoWay: true
+        property: 🚀 Projects
+        database: Projects
+        syncedProperty: 🔬 Key Results
+      supporting_behavior_systems:
+        kind: relation
+        twoWay: true
+        property: 🦥 Habits
+        database: Habits
+        syncedProperty: 🔬 Key Results
+      tasks:
+        kind: relation
+        twoWay: true
+        property: ⚡ Tasks
+        database: Tasks
+        syncedProperty: 🔬 Key Results
+    project:
+      name:
+        kind: native
+        property: Name
+      definition_of_done:
+        kind: page_body
+      status:
+        kind: native
+        property: Status
+      area_of_focus:
+        kind: relation
+        twoWay: true
+        property: 🧭 Areas of Focus
+        database: Areas of Focus
+        syncedProperty: 🚀 Projects
+      key_results:
+        kind: relation
+        twoWay: true
+        property: 🔬 Key Results
+        database: Key Results
+        syncedProperty: 🚀 Projects
+      behavior_systems:
+        kind: relation
+        twoWay: true
+        property: 🦥 Habits
+        database: Habits
+        syncedProperty: 🚀 Projects
+      tasks:
+        kind: relation
+        twoWay: true
+        property: ⚡ Tasks
+        database: Tasks
+        syncedProperty: 🚀 Projects
+      support:
+        kind: page_body
+    behavior_system:
+      behavior:
+        kind: native
+        property: Name
+      supports_identity:
+        kind: relation
+        twoWay: true
+        property: 🥷🏻 Identities
+        database: Identities
+        syncedProperty: 🦥 Habits
+      supports_area_of_focus:
+        kind: relation
+        twoWay: true
+        property: 🧭 Areas of Focus
+        database: Areas of Focus
+        syncedProperty: 🦥 Habits
+      supports_key_result:
+        kind: relation
+        twoWay: true
+        property: 🔬 Key Results
+        database: Key Results
+        syncedProperty: 🦥 Habits
+      supports_project:
+        kind: relation
+        twoWay: true
+        property: 🚀 Projects
+        database: Projects
+        syncedProperty: 🦥 Habits
+      lifecycle:
+        kind: native
+        property: Lifecycle
+      automaticity_or_form:
+        kind: page_body
+      cue:
+        kind: relation
+        twoWay: false
+        property: After (trigger)
+        database: Trigger
+      context:
+        kind: relation
+        twoWay: false
+        property: Context
+        database: Context
+      frequency_or_cadence:
+        kind: absent
+        reason: frequency is not expressed by a property
+      minimum_version:
+        kind: page_body
+      target_version:
+        kind: page_body
+      environment_design:
+        kind: page_body
+      success_rule:
+        kind: page_body
+      recovery_rule:
+        kind: page_body
+      tracking:
+        kind: traversed
+        rule: through_task_instances
+        via: ⚡ Tasks
+      tasks:
+        kind: relation
+        twoWay: true
+        property: ⚡ Tasks
+        database: Tasks
+        syncedProperty: 🦥 Habits
+    task:
+      name:
+        kind: native
+        property: Name
+      status:
+        kind: native
+        property: Status
+      project:
+        kind: relation
+        twoWay: true
+        property: 🚀 Projects
+        database: Projects
+        syncedProperty: ⚡ Tasks
+      behavior_system:
+        kind: relation
+        twoWay: true
+        property: 🦥 Habits
+        database: Habits
+        syncedProperty: ⚡ Tasks
+      key_results:
+        kind: relation
+        twoWay: true
+        property: 🔬 Key Results
+        database: Key Results
+        syncedProperty: ⚡ Tasks
+      area_of_focus:
+        kind: relation
+        twoWay: true
+        property: 🧭 Areas of Focus
+        database: Areas of Focus
+        syncedProperty: ⚡ Tasks
+      dependencies:
+        kind: relation
+        twoWay: true
+        property: Blocked by
+        database: Tasks
+        syncedProperty: Blocking
+      waiting_for:
+        kind: page_body
+      date:
+        kind: native
+        property: Date
+      deadline:
+        kind: native
+        property: Deadline
+      context_or_constraint:
+        kind: relation
+        twoWay: false
+        property: Context
+        database: Context
+      result_or_note:
+        kind: page_body
+    inbox_item:
+      captured_title:
+        kind: native
+        property: Name
+      captured_text:
+        kind: native
+        property: Text
+      captured_at:
+        kind: native
+        property: Created time
+      source:
+        kind: absent
+        reason: capture source is not stored
+      clarified_at:
+        kind: absent
+        reason: the moment of clarify is not stored
+  options:
+    task.status:
+      canonical:
+        Next Action: Next Action
+        Scheduled: Scheduled
+        Waiting For: Waiting For
+        Someday/Maybe: Someday/Maybe
+        Done: Done
+        Canceled: Canceled
+        Failed: Failed
+      known_non_canonical:
+        Hidden: Hidden
+    project.status:
+      canonical:
+        Planning: Planning
+        Active: Active
+        Paused: Paused
+        Done: Done
+        Canceled: Canceled
+    area_of_focus.mode:
+      canonical:
+        Advance: Advance
+        Maintain: Maintain
+        Minimum: Minimum
+    behavior_system.lifecycle:
+      canonical:
+        Designed: Designed
+        Installing: Installing
+        Stabilizing: Stabilizing
+        Maintenance: Maintenance
+        Retired: Retired
+  signals:
+    task.blocked: Blocked
+    task.effective_areas_of_focus: 🧭 Areas of Focus (c)
+    task.effective_tags: Tags (c)
+    project.blocked: Blocked
+    project.effective_areas_of_focus: 🧭 Areas of Focus (c)
+    behavior_system.streak: Streak
+    behavior_system.completed_instances: Done
+    behavior_system.failed_instances: Failed

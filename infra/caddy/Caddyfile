@@ -1,0 +1,39 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$APP_DOMAIN} {
+	# What is public: the provider ingress, the App MCP and the authorization server for the chat —
+	# the resource and server metadata and `/oauth/*`, listed explicitly, as for GBrain below.
+	# `/health` is not exposed externally: the container performs the health check itself.
+	@public path /webhooks/notion /webhooks/telegram /mcp /mcp/* /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/mcp /.well-known/oauth-authorization-server /oauth/*
+
+	handle @public {
+		reverse_proxy app:3000
+	}
+
+	handle {
+		respond 404
+	}
+}
+
+{$GBRAIN_DOMAIN} {
+	# The resource metadata is available at two paths: for `/mcp`, GBrain points to
+	# `/.well-known/oauth-protected-resource/mcp` in the 401 header, and the chat client requests
+	# the metadata there.
+	@claude path /mcp /mcp/* /authorize /token /register /revoke /.well-known/oauth-authorization-server /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/mcp /health
+
+	@operator path /admin /admin/*
+
+	handle @claude {
+		reverse_proxy gbrain:3131
+	}
+
+	handle @operator {
+		reverse_proxy gbrain:3131
+	}
+
+	handle {
+		respond 404
+	}
+}

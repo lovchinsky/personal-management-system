@@ -1,0 +1,34 @@
+# Dependencies
+/node_modules
+
+# Compiled output
+/dist
+/build
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+
+# Tests
+/benchmarks/memory
+/coverage
+/.nyc_output
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# dotenv environment variable files; the example stays tracked, as in the root .gitignore
+.env
+.env.*
+!.env.example
+
+# Auto-generated files
+src/generated/

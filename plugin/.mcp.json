@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "app": {
+      "type": "http",
+      "url": "${APP_MCP_URL}"
+    },
+    "notion": {
+      "type": "http",
+      "url": "https://mcp.notion.com/mcp"
+    },
+    "gbrain": {
+      "type": "http",
+      "url": "${GBRAIN_MCP_URL}"
+    }
+  }
+}

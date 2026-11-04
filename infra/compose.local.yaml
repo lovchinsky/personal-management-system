@@ -1,0 +1,11 @@
+services:
+  app:
+    environment:
+      NODE_ENV: development
+
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  gbrain:
+    ports:
+      - "127.0.0.1:3131:3131"

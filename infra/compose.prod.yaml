@@ -1,0 +1,39 @@
+services:
+  app:
+    environment:
+      NODE_ENV: production
+
+  gbrain:
+    environment:
+      GBRAIN_HTTP_TRUST_PROXY: "1"
+      GBRAIN_PUBLIC_URL: https://${GBRAIN_DOMAIN}
+
+  caddy:
+    image: caddy:2.11.4-alpine
+    restart: unless-stopped
+
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      GBRAIN_DOMAIN: ${GBRAIN_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+    depends_on:
+      - app
+      - gbrain
+
+    networks:
+      - services
+
+volumes:
+  caddy_data:
+  caddy_config:

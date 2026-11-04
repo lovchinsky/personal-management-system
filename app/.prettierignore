@@ -1,0 +1,17 @@
+# Dependencies
+/node_modules
+
+# Compiled output
+/dist
+/build
+
+# Tests
+/benchmarks/memory
+/coverage
+/.nyc_output
+
+# Auto-generated files
+src/generated/
+
+# Docs
+*.md

@@ -1,0 +1,89 @@
+# Node / NestJS
+**/node_modules/
+**/dist/
+**/dist-gate/
+**/coverage/
+
+# The rules below name classes of files, not exact names, and match at any depth: a file is
+# sensitive because of what it holds, not because of the name it was given. A new shape
+# (`.new`, `.tmp`, another folder) falls into its class without a new line here.
+
+# Data and backups in every form: database dumps, archives, plain SQL. RUNBOOK writes a
+# dump or archive under a `.new` suffix until it is verified, so suffixes are covered too.
+*.dump
+*.dump.*
+*.tar
+*.tar.*
+*.tgz
+*.gz
+*.bz2
+*.xz
+*.zst
+*.zip
+*.7z
+*.bak
+*.bak.*
+*.backup
+*.sql
+*.sql.*
+*.sqlite
+*.sqlite3
+*.db
+# Source is not data, whatever the name: app/src/platform/queue/queue.sql.ts. Migrations
+# are source too: the App image carries them and applies them on every start. So is the
+# Postgres init script Compose mounts into the database container.
+!*.ts
+!app/prisma/migrations/**/*.sql
+!infra/postgres/init.sql
+
+# Environment and credentials. .env.example is the one tracked shape.
+.env
+.env.*
+*.env
+!.env.example
+.envrc
+.direnv/
+.npmrc
+.netrc
+# Private keys and certificate bundles
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+# Credential folders. `credentials/` is not here: app/src/credentials is source.
+**/.secrets/
+**/.credentials/
+**/secrets/
+
+# Per-installation Notion files, written by the `notion` command: the binding of the canonical
+# model (`mapping.yaml`, also filled in by hand), the databases it built (title -> data source id)
+# and the formulas to enter by hand. Not a secret — identifiers, no credentials. The folder itself
+# ships, so the command finds it in place.
+infra/notion/*
+!infra/notion/.gitkeep
+
+# Gate environment: the binding, ledger and formulas written by `bin/gate prepare`, run transcripts.
+infra/gate/
+
+# Gate run results, run logs, transcripts
+gate-*.json*
+*.log
+*.jsonl
+
+# OS / editors
+.DS_Store
+**/.idea/
+**/.vscode/
+
+# Local state of Claude Code and personal agent files stay local.
+**/.claude/
+CLAUDE.md
+CLAUDE.local.md
+/.mcp.json
+
+# Worktrees
+.worktrees/

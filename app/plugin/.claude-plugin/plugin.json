@@ -1,0 +1,7 @@
+{
+  "name": "personal-management-system-runner",
+  "description": "The instructions a Personal Management System run follows when the App dispatches it. Loaded from the App image, never distributed.",
+  "author": {
+    "name": "Serhiy Lovchinsky"
+  }
+}

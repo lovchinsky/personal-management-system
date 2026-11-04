@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+# Runs the gate in a separate environment (ADR 0041): a one-off container from the gate image,
+# its own database (`app_db_gate`), its own Notion workspace with its integration and binding,
+# its own GBrain client. The main App neither stops nor changes its image meanwhile.
+#
+#   bin/gate {m3|m4|m5|m6|m7|m8|m9} [gate arguments] > gate-mN.json
+#   bin/gate m8 --seed               — seed the stale Inbox items of gate M8
+#   bin/gate prepare [--check]       — build the gate workspace from the Notion schema contract;
+#                                      `--check` only checks against it (every gate does that too)
+#   bin/gate notion-mcp [arguments]  — the gate's Notion MCP grant (authorization, --status)
+#
+# The gate secrets are in `infra/.env.gate`; the script passes them to Compose in its environment.
+#
+# When the gate waits for the person (to resolve a thread in Notion) and nothing has changed in a
+# minute, the wrapper announces it aloud every minute; when the run is over, the wrapper says how
+# it ended. On macOS the announcement is made with `say`, elsewhere with the terminal bell.
+# `GATE_QUIET=1` turns the announcements off.
+#
+# Protocol with the gate: a line of its stderr that STARTS with GATE_NEEDS_PERSON calls the
+# operator; a line that starts with GATE_PERSON_DONE stops the call. The markers are in
+# `app/test/gate/gate-signals.ts`; `app/test/contract/gate-signals.spec.ts` checks that the
+# script matches them.
+#
+# The gate verdict goes to stdout, everything else to stderr. The exit code is the gate's code
+# (0 proven, 1 not proven, 3 proven but residue remains) or the script's own: 2 for a usage error,
+# 5 when another gate is already running, 6 when the gate environment is not ready.
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+DC=./bin/dc
+
+usage() {
+  echo "Usage: $0 {m3|m4|m5|m6|m7|m8|m9|prepare|notion-mcp} [arguments]" >&2
+  exit 2
+}
+
+[[ $# -ge 1 ]] || usage
+COMMAND="$1"
+shift
+
+# A failed write to stderr means the operator's terminal is gone. Then stderr goes nowhere:
+# otherwise bash would later write the unwritten text to whichever file it hands the descriptor
+# to.
+log() {
+  echo "bin/gate: $*" >&2 || exec 2>/dev/null
+}
+
+case "$COMMAND" in
+  m3 | m4 | m5 | m6 | m7 | m8 | m9 | prepare | notion-mcp) ;;
+  *) usage ;;
+esac
+
+GATE_DATABASE=app_db_gate
+RUN_NAME=personal-management-system-gate-run
+LOCK_DIR="${TMPDIR:-/tmp}/personal-management-system-gate.lock"
+
+# The gate secrets reach Compose through the script's environment: the `.env.gate` file is read
+# line by line, without being executed, and only `NAME=value` lines are taken.
+if [[ ! -f .env.gate ]]; then
+  log "infra/.env.gate is missing: the gate environment is not set up (infra/GATE.md § “Gate environment”)"
+  exit 6
+fi
+while IFS='=' read -r key value; do
+  [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] && export "$key=$value"
+done < .env.gate
+
+gate_compose() {
+  "$DC" --profile gate "$@"
+}
+
+# The lock: two gates at once would share one database and one gate workspace. A lock with no
+# live owner is left over from a script that was killed, and the next launch takes it over.
+acquire_lock() {
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    echo "$$" >"$LOCK_DIR/pid"
+    return 0
+  fi
+
+  local owner
+  owner="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+  if [[ -n "$owner" ]] && kill -0 "$owner" 2>/dev/null; then
+    log "another gate is running (pid $owner)"
+    exit 5
+  fi
+
+  log "taking over the lock of a gate wrapper that is gone (pid ${owner:-unknown})"
+  echo "$$" >"$LOCK_DIR/pid"
+}
+
+# Tells the operator aloud; without `say`, rings the terminal bell.
+announce() {
+  [[ -z "${GATE_QUIET:-}" ]] || return 0
+  if command -v say >/dev/null 2>&1; then
+    say "$1" >/dev/null 2>&1 || true
+  else
+    printf '\a' >&2
+  fi
+}
+
+# Calls the operator: reminds every minute until it is stopped. The gate waits no longer than
+# ten minutes, so the reminders end on their own after fifteen minutes: if the wrapper is killed,
+# the reminder does not talk forever.
+call_operator() {
+  [[ -z "${GATE_QUIET:-}" ]] || return 0
+  local reminders
+  for ((reminders = 0; reminders < 15; reminders += 1)); do
+    sleep "${GATE_REMIND_SECONDS:-60}"
+    announce "Gate needs you. Resolve the thread in Notion."
+  done
+}
+
+# The gate's stderr passes through here line by line; the protocol signals start and stop the
+# call to the operator, and the rest goes to the terminal unchanged.
+attend() {
+  local line caller=""
+  stop_caller() {
+    if [[ -n "$caller" ]]; then
+      kill "$caller" 2>/dev/null || true
+      caller=""
+    fi
+  }
+  trap stop_caller EXIT
+
+  # A terminal that is gone does not stop the reading: the gate writes to stderr while it cleans up.
+  while IFS= read -r line; do
+    printf '%s\n' "$line" >&2 || exec 2>/dev/null
+    case "$line" in
+      GATE_NEEDS_PERSON*)
+        stop_caller
+        call_operator &
+        caller=$!
+        ;;
+      GATE_PERSON_DONE*)
+        stop_caller
+        ;;
+    esac
+  done
+}
+
+# The gate database is in the same Postgres instance; it is created when it does not exist
+# yet, and migrated by the gate image, as the main one is by the App image.
+ensure_database() {
+  local exists
+  exists="$("$DC" exec -T postgres psql -U postgres -tAc \
+    "SELECT 1 FROM pg_database WHERE datname = '$GATE_DATABASE'" 2>/dev/null || true)"
+  if [[ "$exists" != "1" ]]; then
+    log "creating the gate database $GATE_DATABASE"
+    "$DC" exec -T postgres psql -U postgres -c "CREATE DATABASE $GATE_DATABASE OWNER app_user" >&2
+  fi
+  gate_compose run --rm -T gate npx --no-install prisma migrate deploy >&2
+}
+
+mkdir -p gate
+
+# Every code change produces a new gate image, and the earlier one is left untagged and takes up
+# disk space: the build removes it itself. Docker will not remove an image that a container still
+# runs from, and there is no need to.
+GATE_IMAGE=personal-management-system-gate:local
+previous="$(docker image inspect --format '{{.Id}}' "$GATE_IMAGE" 2>/dev/null || true)"
+log "building the gate image"
+gate_compose build gate >&2
+current="$(docker image inspect --format '{{.Id}}' "$GATE_IMAGE" 2>/dev/null || true)"
+if [[ -n "$previous" && "$previous" != "$current" ]]; then
+  docker image rm "$previous" >/dev/null 2>&1 || true
+fi
+
+ensure_database
+
+# Preparation and the grant are operator actions, not gate runs: they need neither the lock nor
+# the reminders.
+case "$COMMAND" in
+  prepare)
+    exec "$DC" --profile gate run --rm -T gate node dist-gate/test/gate/workspace/prepare.js "$@"
+    ;;
+  notion-mcp)
+    exec "$DC" --profile gate run --rm gate node dist/src/credentials/notion-mcp/authorize-notion-mcp.js "$@"
+    ;;
+esac
+
+# The gate workspace must match the contract schema together with the gate overlay, and its
+# formulas must match the contract's formulas: the check writes nothing, and `bin/gate prepare`
+# fixes a discrepancy.
+if ! gate_compose run --rm -T gate node dist-gate/test/gate/workspace/prepare.js --check >&2; then
+  log "the gate workspace is not ready (see above)"
+  exit 6
+fi
+
+GATE_STATUS=""
+GATE_PID=""
+
+on_exit() {
+  local status=$?
+  trap '' INT TERM HUP
+
+  if [[ -n "$GATE_STATUS" ]]; then
+    status="$GATE_STATUS"
+  fi
+
+  rm -rf "$LOCK_DIR"
+  exit "$status"
+}
+
+# The operator's signal (Ctrl+C, `kill`, a closed terminal) is passed to the container by Compose,
+# and the script also asks the gate to stop (TERM): that way the gate hears about the stop even
+# if the signal did not reach it. The gate cleans up after itself and writes a stub verdict. The
+# script sees each operator action separately, so a second signal stops the container at once,
+# without cleanup.
+#
+# HUP means the operator's terminal is gone. There is nowhere left to write, and bash would hand
+# the descriptor left over from it to the next opened file, and the script's lines would land,
+# for example, in the verdict. So from then on the script's stderr goes nowhere.
+STOPS=0
+on_signal() {
+  if [[ "$1" == HUP ]]; then
+    exec 2>/dev/null
+  fi
+
+  if [[ -z "$GATE_PID" ]]; then
+    log "interrupted before the gate started"
+    exit 130
+  fi
+
+  STOPS=$((STOPS + 1))
+  if ((STOPS == 1)); then
+    log "stopping the gate: it cleans up and writes its verdict; signal again to stop it at once"
+    docker kill --signal TERM "$RUN_NAME" >/dev/null 2>&1 || true
+  else
+    log "stopping the gate at once: what it built stays, named by its attempt tag"
+    docker kill --signal KILL "$RUN_NAME" >/dev/null 2>&1 || true
+  fi
+}
+
+acquire_lock
+trap on_exit EXIT
+trap 'on_signal INT' INT
+trap 'on_signal TERM' TERM
+trap 'on_signal HUP' HUP
+
+gate_compose run --rm -T --name "$RUN_NAME" gate node "dist-gate/test/gate/${COMMAND}.gate.js" "$@" 2> >(attend) &
+GATE_PID=$!
+
+# A signal caught in `wait` interrupts the wait while the gate is still cleaning up: we wait
+# until it has really finished.
+while true; do
+  if wait "$GATE_PID"; then
+    GATE_STATUS=0
+  else
+    GATE_STATUS=$?
+  fi
+
+  if ! kill -0 "$GATE_PID" 2>/dev/null; then
+    break
+  fi
+done
+
+announce "Gate $COMMAND finished with code $GATE_STATUS."

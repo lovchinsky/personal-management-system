@@ -1,0 +1,24 @@
+{
+  "name": "personal-management-system-marketplace",
+  "owner": { "name": "<OWNER>" },
+  "description": "Personal Management System: the plugin marketplace of one installation.",
+  "plugins": [
+    {
+      "name": "personal-management-system",
+      "displayName": "Personal Management System",
+      "description": "An open-source personal management system with proactive AI assistance, long-term memory, and reliable follow-through.",
+      "strict": false,
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/<OWNER>/personal-management-system.git",
+        "path": "plugin",
+        "ref": "main",
+        "sha": "<COMMIT_SHA>"
+      },
+      "mcpServers": {
+        "app": { "type": "http", "url": "https://<APP_DOMAIN>/mcp" },
+        "gbrain": { "type": "http", "url": "https://<GBRAIN_DOMAIN>/mcp" }
+      }
+    }
+  ]
+}

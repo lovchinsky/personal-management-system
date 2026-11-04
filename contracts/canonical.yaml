@@ -1,0 +1,1897 @@
+# ===========================================================================
+# contracts/canonical.yaml — the canonical domain model of Personal Management System.
+#
+# THE SINGLE SOURCE OF TRUTH for: the App's TypeScript types, contract-test fixtures, the Skill's
+# ontology reference and the tables embedded in docs.
+#
+# Rules of this file:
+#   * Values are written VERBATIM. `Next Action` is not normalized to `next_action`;
+#     `Someday/Maybe` keeps its slash.
+#   * The name of a canonical type is always used in full: in docs, the Skill, code and GBrain
+#     entries. A name derived from a type carries all of its words: the directory of the
+#     `area_of_focus` anchor is `areas-of-focus`.
+#   * YAML keys, enum values and explanatory comments are in English.
+#   * Discrepancies between sources are NOT resolved here: they are recorded in the `conflicts:`
+#     block at the end of the file.
+#
+# Boundaries of responsibility (so that no fact has two authorities):
+#   * This file owns the LISTS (canonical types, statuses, lifecycle, workflow modes, detector
+#     labels, permission class names).
+#   * `docs/3-policy.md` owns the SEMANTICS of permissions (what is allowed in each class)
+#     — only the class names are listed here, on purpose.
+#   * `docs/2-system.md` describes in prose what is listed here and refers to this file.
+# ===========================================================================
+
+meta:
+  contract_name: personal-management-system-canonical-domain-model
+  contract_version: 1
+  language_convention: "YAML keys, enum values and explanatory comments in English"
+
+system:
+  purpose:
+    - maintain reliable control of commitments
+    - align resources with meaningful direction
+    - support behavior change without excessive rigidity
+    - learn from execution feedback
+    - preserve autonomy and minimize system overhead
+
+levels:
+  L4:
+    name: Identities & Principles
+    question: "Who do I choose to be, and by what principles do I act?"
+    # The only canonical object of the Level is `Identity`. A Principle is a concept of the
+    # methodology (`docs/1-methodology.md` § “Principles”) that lives in the content of an Identity
+    # page, not as a separate type with its own id; `docs/1-methodology.md` § “Identity Charter”
+    # presents Principles as part of the Identity Charter.
+    objects:
+      - Identity
+
+  L3:
+    name: Areas of Focus
+    question: "What must remain under responsible attention?"
+    objects:
+      - Area of Focus
+    area_of_focus_properties:
+      standard: "acceptable/healthy state that should be maintained"
+      mode:
+        meaning: "current resource-management posture"
+        values:
+          - Advance
+          - Maintain
+          - Minimum
+
+  L2:
+    name: Objectives & Key Results
+    question: "What must change meaningfully, and what evidence will show that the change is happening?"
+    objects:
+      - Objective
+      - Key Result
+
+  L1:
+    name: Change Mechanisms
+    question: "Through what mechanisms do we influence reality?"
+    objects:
+      - Project
+      - Behavior System
+    project_role: "bounded multi-action work"
+    behavior_system_role: "recurring behavior"
+
+  L0:
+    name: Tasks
+    question: "What specific unit of work is tracked, and what state is it in?"
+    objects:
+      - Task
+    task_statuses:
+      - Next Action
+      - Scheduled
+      - Waiting For
+      - Someday/Maybe
+      - Done
+      - Canceled
+      - Failed
+
+operating_loop:
+  - Capture
+  - Clarify
+  - Organize & Align
+  - Engage
+  - Reflect
+  - Adapt
+
+core_distinctions:
+  - "Key Results are evidence."
+  - "Projects and Behavior Systems are interventions/change mechanisms."
+  - "Tasks are Level 0 execution-level work items; Task Status controls local workflow."
+  - "Next Action is a Task status, not a separate entity."
+  - "Scheduled, Waiting For, and Someday/Maybe are Task statuses and views, not separate stores."
+  - "Date and Deadline are time properties, not interchangeable statuses: Date is when the work returns to attention, Deadline is the moment by which it must be finished."
+  - "Areas of Focus manage ongoing responsibility and maintenance."
+  - "Objectives manage meaningful intentional change."
+  - "Routine is recurring behavior; Habit implies increased automaticity."
+  - "The hierarchy is not a strict tree; relationships are many-to-many."
+
+project_model:
+  core_statuses:
+    - Planning
+    - Active
+    - Paused
+    - Done
+    - Canceled
+  status_semantics:
+    Planning: "committed but not yet clarified/designed enough for normal execution"
+    Active: "part of the current work portfolio and able to progress through Tasks"
+    Paused: "still a valid commitment, but progress is intentionally suspended"
+    Done: "Definition of Done satisfied"
+    Canceled: "closed without satisfying Definition of Done"
+  tasks: "linked Level 0 Task objects"
+  rules:
+    - "A Project does not maintain separate Next Action or Waiting For fields."
+    - "Planning is for committed work, not a backlog of possible Projects."
+    - "Planning Projects may have executable planning/clarification Tasks."
+    - "Tasks of a Paused Project are hidden from flexible execution views by default without requiring Task-status changes; real Calendar commitments/deadlines must still be renegotiated explicitly."
+    - "A completed intervention is Done even if its Key Result does not improve."
+    - "When a Project becomes Done or Canceled, remaining Tasks must be reconciled: Done, Canceled, Failed (the person's judgement: the commitment stood and the attempt did not happen), or detached/reassigned."
+
+task_model:
+  status_semantics:
+    Next Action: "no unresolved task-level prerequisite; actual execution availability may also depend on Project Status"
+    Scheduled: "intentionally tied to a future time/context"
+    Waiting For: "blocked by external person/system/event/dependency"
+    Someday/Maybe: "stored but not currently committed"
+    Done: "work completed"
+    Canceled: "work no longer required"
+    Failed: "the commitment stood and the attempt did not happen or did not finish; the person's judgement, not derived from data"
+  optional_time_fields:
+    # Two axes: activation and constraint. `date` covers all three activation variants, because
+    # there is a single status and they do not coexist; `deadline` is orthogonal to the status and
+    # coexists with `date` (ADR 0010).
+    - date
+    - deadline
+  rules:
+    - "Deadline does not imply Scheduled status."
+    - "Waiting For may have a Date without changing status: it is when the dependency is checked, not when the work becomes doable."
+    - "Date and Deadline are independent: a Task may carry both."
+    - "Task Status describes local workflow; a Paused parent Project can suppress execution without rewriting the Task status."
+    - "In Progress and Blocked are not statuses: the first has no option, the second is a computed signal."
+    - "A Behavior System is a definition of behaviour; a Task is one occurrence of it. Every repetition exists as an instance."
+
+behavior_system_model:
+  lifecycle:
+    - Designed
+    - Installing
+    - Stabilizing
+    - Maintenance
+    - Retired
+  automaticity:
+    meaning: "separate from lifecycle; behavior may remain a deliberate Routine or become increasingly Habitual"
+  rule: "Routine/Habitual is not stored as the same dimension as lifecycle."
+
+objective_review:
+  # Decisions are made during the Strategic Review: reviewing an Objective is an action, and the
+  # Strategic Review is the session in which it takes place.
+  decisions:
+    - Continue
+    - Adapt
+    - Pause
+    - Abandon
+    - Achieved
+  # `Continue` records that the review took place and the state stays the same. It changes
+  # nothing, so it needs no approval: a confirmation of “no change” yields a dialogue whose only
+  # possible result is that nothing happened.
+  requires_approval:
+    - Adapt
+    - Pause
+    - Abandon
+    - Achieved
+  rule: "Objective review decisions are not a Project/Task-style formal state machine; Pause and Adapt are not terminal outcomes."
+
+core_rules:
+  - "Capture broadly; expose selectively."
+  - "Progressively elaborate only to the detail currently needed."
+  - "Calendar holds hard landscape; Available Now is a contextual view of eligible Next Action Tasks after Project/context constraints are applied."
+  - "Do not require an Objective for ordinary maintenance."
+  - "Do not require every Task to belong to a Project."
+  - "Do not require manual confirmation where it does not change a decision."
+  - "Do not treat completed interventions or Tasks as proof of outcomes."
+  - "At Objective review, allow Continue, Adapt, Pause, Abandon, or mark Achieved; do not force a symmetric Failed state."
+  - "Higher Levels change more slowly; feedback may move upward quickly."
+  - "If system overhead exceeds decision value, simplify."
+
+cross_cutting:
+  behavior_design:
+    - cues
+    - context
+    - friction
+    - environment
+    - repetition
+    - feedback
+    - implementation intentions
+
+  self_regulation:
+    - CBT cognitive restructuring
+    - behavioral experiments
+    - behavioral activation / graded engagement
+    - perfectionism diagnostics
+    - procrastination diagnostics
+    - emotion and avoidance awareness
+
+# ---------------------------------------------------------------------------
+# Definitions of the ontology's terms. The methodology (`docs/1-methodology.md`) owns the
+# ontology, and this key is its machine-readable form.
+# ---------------------------------------------------------------------------
+definitions:
+  - term: "Identity"
+    definition: "a relatively stable chosen orientation that describes who the person strives to be, and how, in a meaningful context, together with the Principles that govern decisions."
+  - term: "Principle"
+    definition: "a relatively stable decision rule that helps choose among permissible actions, especially in situations that a procedure cannot fully anticipate."
+  - term: "Area of Focus"
+    definition: "an ongoing domain of responsibility whose state needs to be assessed and maintained periodically but which has no Definition of Done. `Standard` and `Mode` are properties of an Area of Focus, not separate object types. `Standard` describes the acceptable state; `Mode` sets the current management mode: `Advance`, `Maintain` or `Minimum`."
+  - term: "Objective"
+    definition: "a meaningful desired change or direction that justifies the focused use of resources over a defined period."
+  - term: "Key Result"
+    definition: "observable evidence or a target condition by which progress on, or achievement of, an Objective is assessed."
+  - term: "Project"
+    definition: "a bounded multi-action commitment through which a defined deliverable or change is produced, mostly under the direct control of the person doing the work."
+  - term: "Definition of Done"
+    definition: "a set of conditions concrete enough that, once they are met, the Project moves to the status `Done`."
+  - term: "Project Status"
+    definition: "a mutually exclusive lifecycle state of a Project. Core statuses: `Planning`, `Active`, `Paused`, `Done`, `Canceled`. `Planning` means work that is committed but not yet clarified enough for normal execution; planning Tasks can be done in the meantime. `Paused` keeps the commitment without current execution and suppresses its Tasks in flexible execution views; `Done` and `Canceled` are terminal statuses."
+  - term: "Behavior System"
+    definition: "deliberately designed recurring behavior together with the conditions for triggering, performing, maintaining and reviewing it."
+  - term: "Behavior System Lifecycle"
+    definition: "the current management state of a Behavior System: `Designed`, `Installing`, `Stabilizing`, `Maintenance` or `Retired`. The lifecycle describes maturity and the need for management attention, not the level of automaticity."
+  - term: "Routine"
+    definition: "recurring behavior that has a stable structure or cadence but may still require conscious initiation and control."
+  - term: "Habit"
+    definition: "a behavioral state with higher automaticity, in which a familiar context/cue increasingly triggers the action without a separate conscious decision. A Habit is not a lifecycle status of a Behavior System."
+  - term: "Task"
+    definition: "the smallest trackable unit of Level 0, which represents concrete work, an expected result or a potential future action and has one current workflow status."
+  - term: "Task Status"
+    definition: "a mutually exclusive local workflow state of a Task. Core statuses: `Next Action`, `Scheduled`, `Waiting For`, `Someday/Maybe`, `Done`, `Canceled`, `Failed`. For a Task linked to a Project, the Project Status can additionally limit execution availability without changing the Task Status."
+  - term: "Next Action"
+    definition: "a Task status meaning that at the level of the Task itself there is no unresolved prerequisite event and the work is concrete enough to start. For a Task linked to a Project, actual availability also depends on the Project Status."
+  - term: "Scheduled"
+    definition: "a Task status meaning that the work is deliberately tied to a future point in time or period and must not be a generally available action until then."
+  - term: "Waiting For"
+    definition: "a Task status meaning that the progress or completion of the work currently depends on an external person, system, event or dependency."
+  - term: "Someday/Maybe"
+    definition: "a Task status meaning that a potential action is stored but is not currently an active commitment."
+  - term: "Done"
+    definition: "a terminal Task status meaning that the work the Task describes has been completed."
+  - term: "Canceled"
+    definition: "a terminal Task status meaning that the work no longer needs to be done or tracked as an active commitment. The commitment is lifted."
+  - term: "Failed"
+    definition: "a terminal Task status meaning that the commitment stood and the attempt did not happen or did not finish. It records the failure of the attempt, not the failure of the outcome: an unsuccessful outcome is assessed through the Key Result and is not expressed by a status. It is set by the person."
+  - term: "Available Now"
+    definition: "a limited contextual view of the Tasks with the status `Next Action` that, once Project Status, context and real constraints are taken into account, are available for Engage; it is not a complete database of all Tasks."
+  - term: "Inbox"
+    definition: "a temporary trusted location for captured inputs on which no decision has been made yet."
+
+# ---------------------------------------------------------------------------
+# Supporting structures are NOT Levels and are not separate stores.
+# ---------------------------------------------------------------------------
+supporting_structures:
+  - "Inbox"
+  - "Calendar"
+  - "Task views"
+  - "Reference"
+  - "Checklists"
+  - "Project Support"
+  - "metrics"
+  - "logs"
+supporting_structure_rules:
+  - "Supporting structures are not Levels: `Inbox`, `Calendar`, Task views, `Reference`, `Checklists`, `Project Support`, metrics and logs. The `Next Action`, `Scheduled`, `Waiting For` and `Someday/Maybe` views are built over the single Task database. `Available Now` is a limited contextual view of eligible `Next Action` Tasks, not a separate store."
+
+# ---------------------------------------------------------------------------
+# This is a conceptual contract: physical databases and property names may differ.
+# `required` means a semantic requirement for a valid managed object, not a requirement to fill
+# in the field during a quick Capture.
+#
+# Semantics that exist only when they are needed are marked `optional`: `core_rules` require
+# elaborating detail only to the level needed, so declaring it in advance is not a condition for
+# it to be useful.
+#
+# A relation named by several fields is several semantics: `supports_identity` and
+# `supports_key_result` are different claims, not one claim with two targets.
+# ---------------------------------------------------------------------------
+field_contract:
+  identity:
+    name: required
+    meaning: optional
+    # Principles are there when there are any; what matters is the identification itself.
+    principles: optional_collection
+    boundaries: optional
+    areas_of_focus: optional_relations
+    behavior_systems: optional_relations
+
+  area_of_focus:
+    name: required
+    # The acceptable state of the Area of Focus. It accumulates during reviews and is not declared
+    # in advance: a list of the ideal life compiled up front is an obstacle to starting.
+    standard: optional
+    mode: Advance | Maintain | Minimum
+    signals_to_watch: optional
+    current_concerns: optional
+    identities: optional_relations
+    objectives: optional_relations
+    projects: optional_relations
+    behavior_systems: optional_relations
+    tasks: optional_relations
+
+  objective:
+    desired_change: required
+    why_now: optional
+    time_horizon: optional
+    key_results: required_collection
+    supports_area_of_focus: optional_relation
+    # Mechanisms attach to a Key Result, so from the Objective's side they are reachable by
+    # traversal through it.
+    supporting_projects: optional_relations
+    supporting_behavior_systems: optional_relations
+    review_notes: optional
+
+  key_result:
+    name: required
+    objective: required_relation
+    supporting_projects: optional_relations
+    supporting_behavior_systems: optional_relations
+    tasks: optional_relations
+
+  project:
+    name: required
+    # The boundary of the specific work, when it does not follow from the name and the makeup of
+    # the Tasks.
+    definition_of_done: optional
+    status: Planning | Active | Paused | Done | Canceled
+    area_of_focus: optional_relation
+    key_results: optional_relations
+    behavior_systems: optional_relations
+    tasks: relation
+    support: optional
+
+  behavior_system:
+    behavior: required
+    supports_identity: optional_relations
+    supports_area_of_focus: optional_relations
+    supports_key_result: optional_relations
+    supports_project: optional_relations
+    lifecycle: Designed | Installing | Stabilizing | Maintenance | Retired
+    automaticity_or_form: optional_separate_dimension
+    # Cue and context are different dimensions: the first triggers the behavior, the second
+    # describes the conditions in which it is available.
+    # `docs/1-methodology.md` § “Behavior System structure” lists them separately.
+    cue: optional
+    context: optional
+    frequency_or_cadence: optional
+    minimum_version: optional
+    target_version: optional
+    environment_design: optional
+    success_rule: optional
+    recovery_rule: optional
+    # Derived from Task instances: a repetition exists exactly as an instance.
+    tracking: derived_from_task_instances
+    tasks: relation
+
+  task:
+    name: required
+    status: Next Action | Scheduled | Waiting For | Someday/Maybe | Done | Canceled | Failed
+    project: optional_relation
+    behavior_system: optional_relation
+    key_results: optional_relations
+    area_of_focus: optional_relations
+    dependencies: optional_relations
+    waiting_for: optional
+    date: optional
+    deadline: optional
+    context_or_constraint: optional
+    result_or_note: optional
+
+  inbox_item:
+    captured_title: required
+    captured_text: optional
+    captured_at: required
+    source: optional
+    clarified_at: optional
+
+# ---------------------------------------------------------------------------
+# Claude is the only AI subject of Personal Management System: it applies a workflow frame and
+# does not become a different agent. Workflow frames are NOT personas or detector agents.
+# ---------------------------------------------------------------------------
+workflow_modes:
+  dialogue:
+    purpose: "answer the person, perform Capture/Clarify, recover context, detect a commitment/decision and execute an explicit authorized action"
+  event_evaluation:
+    purpose: "evaluate a relevant Notion change or a new discussion input"
+  scheduled_recheck:
+    purpose: "re-evaluate a specific unresolved attention episode"
+  closure_processing:
+    purpose: "establish the result of the resolution and decide whether durable knowledge should be consolidated"
+  daily_control:
+    purpose: "show the hard landscape, the current Scheduled commitments and a small Available Now without strategic replanning"
+  weekly_control_review:
+    purpose: "restore trust in Tasks, Projects, Behavior Systems, Areas of Focus and the relevant Key Results"
+  strategic_review:
+    purpose: "evaluate Objectives/Key Results, portfolio change mechanisms, resource conflicts and the `Mode` of the relevant Areas of Focus"
+  deep_review:
+    purpose: "review Identities, Principles, the set of Areas of Focus and the complexity of the system itself"
+
+# ---------------------------------------------------------------------------
+# All workflows use one world model (the boundaries of the systems of record).
+# ---------------------------------------------------------------------------
+world_model:
+  Notion: "management and operational truth"
+  GBrain: "semantic memory"
+  discussions: "durable attention surface"
+  App: "runtime continuity"
+
+# ---------------------------------------------------------------------------
+# The minimum version of the Notion API that the addressing of the physical schema relies on:
+# `GET /v1/data_sources/{id}` exists from that version on, and lower versions have neither it nor
+# the database → data source split.
+# ---------------------------------------------------------------------------
+notion_api:
+  minimum_version: "2025-09-03"
+
+# ---------------------------------------------------------------------------
+# Expansion of the mode -> toolset matrix into literal tool names.
+#
+# A row of the matrix (`docs/2-system.md` § “mode → toolset”) names CAPABILITIES. `allowedTools`
+# accepts only names anchored to a server (INV-307), so this expansion is needed to get from the
+# matrix to the run's options.
+#
+# It is AUTHORED, not derived. A tool that appears on the server side does not become available
+# until it is entered here; that is what distinguishes this registry from the dynamic
+# `tools/list` and makes the perimeter reviewable.
+#
+# The inventory these names are checked against is what `tools/list` returns OVER THE SAME
+# TRANSPORT AND UNDER THE SAME CREDENTIAL that the run uses. The server's CLI catalog is wider:
+# some GBrain tools are not exposed through MCP, and the server returns admin/ops/jobs tools only
+# to a credential with `admin`, `agent` or `sources_admin`.
+#
+# The `capabilities` field of each server is the vocabulary of its capabilities. The `bundles`
+# field holds what a matrix row names with a single word. A capability that no bundle names exists
+# in the vocabulary but is issued to no run.
+# ---------------------------------------------------------------------------
+mcp_toolsets:
+  gbrain:
+    server: gbrain
+    baseline:
+      tool_count: 93
+      server_version: "0.48.5.0"
+      surface: full
+      credential: "the App's OAuth client, scopes read write"
+    surface_ceiling: >-
+      The surface ceiling is `full`. It is server-side and shared by all clients of the server
+      (`infra/compose.yaml`); the narrowing is done by the run's allow-set. Why the ceiling is what
+      it is: `docs/2-system.md` § “Runtime baseline GBrain”.
+    metadata: >-
+      No tool carries `_meta`, so nothing drops out under `dontAsk`. Only some tools carry
+      `annotations`, so **the absence of `destructiveHint` is not a claim about safety**:
+      `delete_page` and `put_raw_data` are not annotated at all.
+    capabilities:
+      search:            [search, query]
+      pages:             [get_page, list_pages, resolve_slugs]
+      hybrid_retrieval:  [context_pack, delta, entity]
+      facts_read:        [recall]
+      timeline_read:     [get_timeline]
+      graph_read:        [get_links, get_backlinks, traverse_graph]
+      identity:          [whoami]
+      facts_write:       [remember]
+      timeline_write:    [add_timeline_entry]
+      graph_write:       [add_link]
+      page_write:        [put_page]
+      synthesis:         [synthesize]
+      facts_forget:      [forget]
+    bundles:
+      read:                [search, pages, hybrid_retrieval, facts_read, timeline_read, graph_read, identity]
+      # The native GBrain writes belong to the conversation: it uses them to write at the person's
+      # request. On its own behalf the system writes to memory through an App intent
+      # (`memory_record`).
+      write:               [facts_write, timeline_write, graph_write, page_write]
+    withheld:
+      synthesis: "the tool declares itself EXPENSIVE / SLOW (LLM calls, seconds to minutes, it costs money). No row of the matrix takes it; enabling it is a separate decision, made together with the retrieval budget"
+      facts_forget: "destructiveHint; the matrix has no provision for GBrain deletions"
+    # Every name on the surface has a disposition: capability, withheld or untriaged. These tools
+    # are in no row of the matrix and have no considered reason for withholding them: the runner
+    # forbids them by name. When a name is unknown to the contract, the runner forbids it, repeats
+    # the launch (ADR 0031) and logs that the name is worth sorting out here. Among the untriaged
+    # tools are `delete_page`, `put_raw_data`, `remove_link`, `revert_version`, `forget_fact` and
+    # `request_tools`; the last one can widen the surface of its own client.
+    untriaged:
+      - add_tag
+      - capture
+      - chronicle_day
+      - chronicle_last_seen
+      - chronicle_on_this_day
+      - chronicle_since
+      - code_blast
+      - code_callees
+      - code_callers
+      - code_def
+      - code_flow
+      - code_refs
+      - delete_page
+      - entity_identity_list
+      - extract_entities
+      - extract_facts
+      - extraction_pending
+      - fetch
+      - find_anomalies
+      - find_contradictions
+      - find_experts
+      - find_orphans
+      - find_trajectory
+      - forget_fact
+      - get_active_schema_pack
+      - get_brain_identity
+      - get_calibration_profile
+      - get_chunks
+      - get_ingest_log
+      - get_raw_data
+      - get_recent_salience
+      - get_skill
+      - get_tags
+      - get_versions
+      - list_brain_skillpack
+      - list_link_sources
+      - list_schema_packs
+      - list_skills
+      - log_ingest
+      - loops_close
+      - loops_mute
+      - loops_unmute
+      - ontology_conflicts
+      - ontology_dimensions
+      - ontology_get
+      - ontology_propose
+      - open_loops
+      - put_raw_data
+      - remove_link
+      - remove_tag
+      - request_tools
+      - restore_page
+      - revert_version
+      - schema_explain_type
+      - schema_graph
+      - schema_lint
+      - schema_review_orphans
+      - schema_stats
+      - search_by_image
+      - search_modes
+      - sources_list
+      - sources_status
+      - takes_add
+      - takes_calibration
+      - takes_list
+      - takes_resolve
+      - takes_scorecard
+      - takes_search
+      - takes_supersede
+      - takes_update
+      - think
+      - volunteer_chronicle
+      - volunteer_context
+  notion:
+    server: notion
+    baseline:
+      composition: "`tools/list` of the hosted endpoint together with the tools that the endpoint hands to runs in `init.tools`"
+      surface: "hosted endpoint; there is no server-side ceiling"
+      credential: "the person's OAuth, scope default"
+    metadata: >-
+      No tool sets `anthropic/requiresUserInteraction`, so under `dontAsk` nothing drops out
+      contrary to an allow rule. Only `vendor_ui_cards` carry `_meta`: they are UI cards of the paid
+      version.
+    surface_ceiling: >-
+      The ceiling is server-side and the client does not narrow it: the hosted endpoint has
+      no equivalent of `--surface`, and there is exactly one scope, `default`. So the narrowing is
+      done solely by the run's allow-set. A direct consequence: the Chat path, where the owner
+      chooses the toolset, sees everything the endpoint returns, including schema mutations and
+      moving pages and databases to the trash. The Notion trash is restorable, and the delete tool
+      without `user_confirmed: true` moves nothing and only lists what would disappear; the chat
+      Skill moves anything to the trash only on a separate request and after the person's explicit
+      “yes”.
+    capabilities:
+      search:         [notion-search]
+      ai_search:      [notion-ai-search]
+      fetch:          [notion-fetch]
+      query:          [notion-query-data-sources, notion-query-multiple-data-sources]
+      lists:          [notion-list-recent-pages, notion-list-shared-pages, notion-list-private-pages, notion-list-favorite-pages]
+      directory:      [notion-get-users, notion-get-teams]
+      comments_read:  [notion-get-comments]
+      comments_write: [notion-create-comment]
+      comments_edit:  [notion-update-comment, notion-delete-comment, notion-set-comment-reaction]
+      discussion_resolution: [notion-set-discussion-resolved]
+      backlinks:      [notion-list-page-backlinks]
+      groups:         [notion-get-groups]
+      page_create:    [notion-create-pages]
+      page_update:    [notion-update-page]
+      async_status:   [notion-get-async-task]
+      schema_mutation:      [notion-create-database, notion-update-data-source, notion-create-view, notion-update-view]
+      structure_mutation:   [notion-move-pages, notion-duplicate-page, notion-create-folder, notion-update-folder, notion-restore-pages]
+      trashing:             [notion-delete-pages, notion-delete-databases]
+      attachments:          [notion-create-attachment, notion-create-file-upload, notion-download-attachment, notion-get-file-download-urls]
+      notion_skills:        [notion-convert-page-to-skill, notion-upload-skill, notion-download-skill, notion-get-enabled-skills, notion-update-enabled-skills]
+      custom_agents:        [notion-spawn-session, notion-stop-session, notion-wait-session, notion-send-message-to-session, notion-get-session-status, notion-query-sessions, notion-search-sessions, notion-list-session-events, notion-read-session-event, notion-search-agents]
+      meeting_notes:        [notion-query-meeting-notes]
+      calendar:             [notion-calendar-list-calendars, notion-calendar-list-events, notion-calendar-list-coworkers-events, notion-calendar-list-calendar-resources, notion-calendar-list-contacts, notion-calendar-create-events, notion-calendar-update-events, notion-calendar-cancel-events]
+      agent_memory:         [notion-memory-search]
+      vendor_ui_cards:      [notion-check-mcp-next-steps, notion-show-advanced-analysis-next-steps]
+      suggested_edits:      [notion-create-suggested-edit, notion-get-suggested-edit, notion-resolve-suggested-edit]
+      tool_access_introspection: [notion-get-tool-access]
+      identity_introspection: [notion-get-self]
+    bundles:
+      read:           [search, fetch, query, lists, directory, comments_read]
+    withheld:
+      page_create: >-
+        The person's voice: Notion attributes a page created through the Notion MCP to the person
+        (ADR 0017). An App run creates a Task from an Inbox item by a system intent, through the
+        App (`capture`).
+      page_update: >-
+        The person's voice, for the same reason. The App moves an Inbox item to the trash — by
+        converting it into a Task or by closing it without a Task — and a change to the properties
+        of an existing object goes through `pending_actions`.
+      comments_write: >-
+        The person's voice: Notion attributes a comment made through the Notion MCP to the owner of
+        the OAuth credential, the person (ADR 0017). An App run comments in the system's voice,
+        through the App (`attention`), and in a run the Notion MCP only reads.
+      comments_edit: >-
+        The person's voice: Notion attributes an edit, a deletion and a reaction to a comment to
+        the owner of the OAuth credential (ADR 0017). The system does not rewrite its own comment:
+        it says what is new in the next one.
+      discussion_resolution: >-
+        Resolving a thread is the person's decision; the App finds a resolved thread itself, by
+        reconciliation (ADR 0038). The tool also requires a Business or Enterprise plan.
+      backlinks: >-
+        A page's relations come from `notion-fetch`; a read that the Skill does not ask for does
+        not widen the run's surface — that is a separate decision, made together with the
+        retrieval budget.
+      groups: >-
+        No Personal Management System scenario reads workspace groups; who is who comes from
+        `directory`.
+      trashing: >-
+        Moving a page or a database to the trash is the person's decision: in Notion or in the
+        chat, on a separate request and after the person's explicit “yes”. An Inbox item is moved
+        to the trash by conversion or closing through the App (`capture`).
+      ai_search: >-
+        The Skill searches with `notion-search` and does not need Notion AI search over connected
+        sources. In addition, the hosted endpoint does not return it in the runs' `init.tools`,
+        and the init check requires the run to have every tool of its row: a missing allowed tool
+        would abort every run.
+      async_status: >-
+        Needed only together with `allow_async`, which no row of the matrix enables.
+      schema_mutation: >-
+        Schema growth is a separately agreed decision of the owner under the criterion of
+        ADR 0001, not an action of a run. `notion-update-data-source` can also set `in_trash` on a
+        whole data source.
+      structure_mutation: >-
+        Moves, copies and folders are not domain operations of Personal Management System.
+      attachments: >-
+        Files are outside the system's scope.
+      notion_skills: >-
+        Notion Skills are a third-party behavior mechanism; the Skill layer of Personal Management
+        System lives in `plugin/` and `app/plugin/`, and a run takes it from the App image.
+      custom_agents: >-
+        A second agent runtime inside the first. `INV-042` states that Claude is the only AI
+        subject of the system.
+      meeting_notes: >-
+        Not part of “Entities in scope”.
+      calendar: >-
+        Notion Calendar is not part of “Entities in scope”: the time of a Task is carried by
+        its `Date` and `Deadline`. Creating, changing or canceling an event is an action in the
+        person's calendar on the person's behalf.
+      agent_memory: >-
+        Memory saved by agents connected to Notion: a second semantic memory beside GBrain, while
+        the system has one memory. It is read-only, but it comes from a third-party store that no
+        Personal Management System scenario maintains.
+      vendor_ui_cards: >-
+        Not domain operations: both render a card offering the paid version of the Notion MCP.
+        They are the ones that carry `_meta`.
+      suggested_edits: >-
+        A page edit suggested through Notion's mechanism is a second route for proposals beside
+        `pending_actions`, and in the person's voice: Notion attributes it to the owner of the
+        OAuth credential (ADR 0017). The system proposes a change through the App, and the person
+        accepts or rejects it — with a channel button or in the chat.
+      tool_access_introspection: >-
+        The run's surface is determined by the App's allow-set, not by the server's answer.
+      identity_introspection: >-
+        The App asks Notion itself, at startup, who the integration is, and attributes the system's
+        writes accordingly; the Skill does not need to know this.
+
+  app:
+    server: app
+    # The App MCP is our own code: the inventory itself is the baseline record.
+    baseline: null
+    capabilities:
+      comment_write: [add_comment]
+      capture_convert: [convert_inbox_item]
+      capture_close: [close_inbox_item]
+      capture_park: [park_inbox_item]
+      continuation_write: [schedule_continuation, reschedule_continuation]
+      continuation_read: [get_continuation_state]
+      delivery_write: [queue_notification]
+      delivery_read: [get_delivery_state]
+      approval_propose: [create_pending_action]
+      approval_read: [get_pending_action, list_pending_actions]
+      approval_decide: [decide_pending_action]
+      runtime_read: [get_runtime_state]
+      schema_read: [get_schema_mapping]
+      memory_record: [record_memory]
+    bundles:
+      attention: [comment_write]
+      capture: [capture_convert, capture_close]
+      continuation: [continuation_write, continuation_read]
+      delivery: [delivery_write, delivery_read]
+      approval: [approval_propose, approval_read]
+      # The Daily Control shows open proposals in its packet but cannot propose.
+      approval_view: [approval_read]
+      introspection: [runtime_read, schema_read]
+      memory: [memory_record]
+    # The capabilities with which the system writes to Notion and GBrain on its own behalf: a
+    # closed list of intents in canonical terms (ADR 0017, ADR 0035). The interface chooses the
+    # voice: a Notion page in the person's voice is written by a native Notion MCP operation,
+    # and a GBrain page that the person asks for in the conversation, by a native GBrain MCP
+    # operation.
+    system_voice: [comment_write, capture_convert, capture_close, memory_record]
+    withheld:
+      approval_decide: "only the person decides on a proposal — with a channel button or in the chat (`chat_toolset`); an App run does not see this tool"
+      capture_park: "parking in the Inbox what was not resolved in the conversation is a chat step (`chat_toolset`); an App run has nothing to park: the item it is processing already sits in the Inbox"
+
+# ---------------------------------------------------------------------------
+# App tools of a chat session. A chat session is not a run: it has no row in the mode → toolset
+# matrix, and the Notion and GBrain tools there are chosen by the person. But the App is our own
+# code, and it decides for itself what it shows to the chat. The chat sees the capabilities below
+# and not the rest:
+# `comment_write` — the person's voice in the chat goes through the Notion MCP (ADR 0017), and a
+# comment in the system's voice is written by a run; `approval_propose` — a proposal made in the
+# chat and left unanswered in the same turn stays an Inbox item (INV-015).
+# ---------------------------------------------------------------------------
+chat_toolset:
+  app:
+    - capture_convert
+    - capture_park
+    - capture_close
+    - continuation_write
+    - continuation_read
+    - delivery_write
+    - delivery_read
+    - approval_read
+    - approval_decide
+    - runtime_read
+    - schema_read
+    - memory_record
+  excluded:
+    comment_write: "in the chat the person's voice goes through the Notion MCP (ADR 0017); a comment in the system's voice is written by a run"
+    approval_propose: "a proposal made in the chat and left unanswered in the same turn stays an Inbox item, not a `pending_actions` row (INV-015)"
+
+# ---------------------------------------------------------------------------
+# Tools added by the harness itself, not by an MCP server: `outputFormat` is implemented by the
+# synthetic tool `StructuredOutput`, which appears in `init.tools` and is called under `dontAsk`
+# without an allow entry. No other name outside the three `mcp__*` prefixes can appear in the
+# effective surface of a run.
+# ---------------------------------------------------------------------------
+harness_tools: [StructuredOutput]
+
+# ---------------------------------------------------------------------------
+# The only built-in tool of a run: `Read`, restricted to the plugin directory. Through it the
+# model reads the files of the run's entry and the shared knowledge; the entry's `SKILL.md` is
+# loaded by the plugin's command in the first turn (ADR 0020, ADR 0026, ADR 0047). The allow rule
+# is `Read(//<absolute plugin directory>/**)`: under `dontAsk`, everything outside the directory
+# is denied. `init.tools` consists of the row's allow-set, `harness_tools` and `plugin_tools`.
+# ---------------------------------------------------------------------------
+plugin_tools:
+  tools: [Read]
+  read_scope: plugin_dir
+
+# ---------------------------------------------------------------------------
+# The entries of the two plugins (`docs/2-system.md` § “Decomposition”). `chat` is in the chat
+# plugin and is loaded by its `description`; `run` is in the runner plugin, and the command
+# `/personal-management-system-runner:<run>` loads it into the run's prompt (`SKILL_NAME` in the
+# runner is made up of the plugin name and this key). `run_frames` are the modes that the App
+# dispatches: each of them has a procedure in the run entry; a mode without one would have only
+# a row in `mode_toolsets`.
+# ---------------------------------------------------------------------------
+plugin_entries:
+  chat: personal-management-system
+  run: run
+run_frames:
+  [dialogue, event_evaluation, scheduled_recheck, closure_processing, daily_control, weekly_control_review, strategic_review, deep_review]
+
+# ---------------------------------------------------------------------------
+# The machine form of the mode → toolset matrix
+# (`docs/2-system.md` § “mode → toolset” is the checked representation of this key).
+# A row names the bundles of each server; the allow-set of a run is their expansion in
+# `mcp_toolsets`. `dialogue` here is the App-triggered row (an Inbox webhook, a reply in a thread
+# that the system managed in a conversation); the chat path has no allow-set: the toolset of
+# the interactive path is determined by the owner through the Plugin, not by the App.
+# ---------------------------------------------------------------------------
+mode_toolsets:
+  # Without these servers a run has nothing to work with: a status at init other than
+  # `connected` is a technical failure. The exception is when Notion is not responding at the
+  # moment (`failed`, `pending`) and that is the only init problem: the run is deferred, and the
+  # App retries it (ADR 0045, `INV-301`). GBrain degrades (`docs/3-policy.md`
+  # § “GBrain unavailability”).
+  required_servers: [notion, app]
+  rows:
+    event_evaluation:      { notion: [read], gbrain: [read], app: [attention, continuation, delivery, approval, memory, introspection] }
+    scheduled_recheck:     { notion: [read], gbrain: [read], app: [attention, continuation, delivery, approval, introspection] }
+    closure_processing:    { notion: [read], gbrain: [read], app: [memory, introspection] }
+    daily_control:         { notion: [read], gbrain: [],     app: [delivery, approval_view, introspection] }
+    weekly_control_review: { notion: [read], gbrain: [read], app: [attention, delivery, approval, introspection] }
+    strategic_review:      { notion: [read], gbrain: [read], app: [attention, delivery, approval, introspection] }
+    deep_review:           { notion: [read], gbrain: [read], app: [delivery, introspection] }
+    dialogue:              { notion: [read], gbrain: [read], app: [attention, capture, continuation, delivery, approval, memory, introspection] }
+
+# ---------------------------------------------------------------------------
+# One compact multi-label ontology inside the canonical Personal Management System Skill
+# layer. Detector labels are an implementation ontology for attention signals, NOT
+# new domain object types or statuses. One situation may have several labels.
+# ---------------------------------------------------------------------------
+detector_labels:
+  - unclarified_input
+  - untracked_commitment
+  - dependency
+  - deadline_risk
+  - project_integrity
+  - behavior_system_friction
+  - area_of_focus_risk
+  - objective_evidence_change
+  - resource_conflict
+  - contradiction
+  - forgotten_context
+  - opportunity
+
+# ---------------------------------------------------------------------------
+# The mode of a label is the broadest one in which it can be raised. The list is exhaustive:
+# exactly `detector_labels`, each label in one mode. The limits on the forms within a label
+# (“narrow”, “high-confidence”, “structural”) are not values of the key: `docs/3-policy.md`
+# § “Proactive scope” defines them.
+#
+#   proactive      — event or recheck evaluation raises the label itself: a comment in the
+#                    thread and, when its rules allow it, a follow-up, a notification, a
+#                    proposal;
+#   inbox_review   — belongs to Inbox items and reviews; event or recheck evaluation does not
+#                    raise it;
+#   review_packet  — appears in the review packet; event evaluation raises it only with a
+#                    concrete urgent `why_now`;
+#   shadow         — an autonomous run does not raise it: no effect, no write; when the
+#                    person leads the conversation, it is a conversation, not a finding.
+#
+# The agreement of the Skill with the key is enforced by
+# `app/test/contract/detector-activation-agreement.spec.ts`; gate M6 derives from it the
+# observation “a label that an event run does not raise has not been raised”.
+# ---------------------------------------------------------------------------
+detector_activation:
+  unclarified_input: inbox_review
+  untracked_commitment: proactive
+  dependency: proactive
+  deadline_risk: proactive
+  project_integrity: proactive
+  behavior_system_friction: review_packet
+  area_of_focus_risk: review_packet
+  objective_evidence_change: review_packet
+  resource_conflict: review_packet
+  contradiction: proactive
+  forgotten_context: proactive
+  opportunity: shadow
+
+# ---------------------------------------------------------------------------
+# Clarify decision set: a closed list of destinations into which a captured item can be
+# resolved. Until a decision is made, the item carries the detector label
+# `unclarified_input`. Corresponds to the `Clarify` step in `operating_loop`.
+#
+# AN INTERSECTION WITH `levels`, NOT a subset of the Level types:
+#   * 7 of the 9 destinations lead into canonical objects. The label
+#     `Identity/Principle` names ONE destination, the `Identities` store:
+#     a Principle is not a type; it is the content of an Identity page.
+#   * `Someday/Maybe Task` is NOT a separate type: it is a Task with the status
+#     `Someday/Maybe` (see `levels.L0.task_statuses`).
+#   * `Trash` and `Reference` are non-actionable outcomes and are not object
+#     types at all. `Reference` appears in `supporting_structures`; `Trash` does not
+#     appear anywhere else in this contract.
+# Do not assume that this list is derived from `levels`.
+# ---------------------------------------------------------------------------
+clarify_destinations:
+  - "Trash"
+  - "Reference"
+  - "Someday/Maybe Task"
+  - "Task"
+  - "Project"
+  - "Behavior System"
+  - "Objective/Key Result"
+  - "Area of Focus"
+  - "Identity/Principle"
+clarify_destination_rules:
+  - "`unclarified_input` means that the captured item still has no sufficient decision: Trash, Reference, Someday/Maybe Task, Task, Project, Behavior System, Objective/Key Result, Area of Focus or Identity/Principle."
+
+# ---------------------------------------------------------------------------
+# Canonical `type` for methodology anchors. Other labels do not substitute for these
+# canonical entity types. This is a deliberate subset of the domain objects: `Principle`,
+# `Key Result` and `Task` are not included — a boundary, not an omission. Key Result evidence
+# is the current state of the managed object, so its place is in Notion; the absence of a
+# carrier there is an unfinished L2 structure, not a ground for mirroring.
+# An anchor holds the exact Notion page ID: it is an identity bridge, not a copy of an
+# operational object.
+# ---------------------------------------------------------------------------
+gbrain_anchor_types:
+  - project
+  - behavior_system
+  - objective
+  - area_of_focus
+  - identity
+
+# ---------------------------------------------------------------------------
+# The shape of an anchor: what a GBrain page must carry to be the anchor of its Notion object.
+# The `fields` list is the frontmatter; the slug, the identity line and the sections are the
+# rest of the convention. Where each requirement comes from: `docs/2-system.md`
+# § “Canonical anchors”.
+# ---------------------------------------------------------------------------
+gbrain_anchor_shape:
+  fields:
+    - type
+    - title
+    - notion_id
+    - aliases
+  # The slug is `<type prefix>/<notion_id without hyphens, in lowercase>`: GBrain accepts only
+  # lowercase letters, and a slug derived from the id does not change when the person renames the
+  # object. The prefix is the whole type name in the plural, with the words joined by hyphens.
+  slug_prefixes:
+    project: projects
+    behavior_system: behavior-systems
+    objective: objectives
+    area_of_focus: areas-of-focus
+    identity: identities
+  # A body line that carries the id in the hyphenated canonical form. The GBrain text index
+  # sees only the page body, so without this line a search by id does not find the anchor.
+  identity_line: "Notion: <notion_id>"
+  # Frontmatter keys that an anchor does not carry. GBrain reserves `id` for deduplication:
+  # a write carrying another page's value of the same key overwrites that page.
+  forbidden_frontmatter_keys:
+    - id
+  notes:
+    - "A canonical anchor holds the exact Notion page ID in structured metadata when such an operational bridge exists. It is an identity bridge, not a copy of the operational object."
+    - "An anchor has three functions: it identifies the knowledge entity exactly, holds the current summary and is an entry point into the graph."
+    - "An anchor does not copy Notion statuses, dates and relations: they are read from Notion."
+  example:
+    type: project
+    title: Launch Alpha
+    notion_id: a0865184-6cda-69f0-e8e0-3884c8610ce5
+    aliases:
+      - Alpha launch
+      - Product Alpha
+
+# ---------------------------------------------------------------------------
+# Three answers to the question “does this Notion object have an anchor”. Candidates come from
+# a search by id in the hyphenated form among the pages of the `gbrain_anchor_types` types; a
+# candidate is a page that the search marked as an exact match (`evidence: keyword_exact`); it
+# becomes an anchor only when the page's `frontmatter.notion_id` equals the id exactly.
+# ---------------------------------------------------------------------------
+gbrain_exact_identity:
+  states:
+    - absent
+    - exact
+    - integrity_error
+  candidate_evidence: keyword_exact
+  rules:
+    - "`absent` means that there is no candidate whose `notion_id` equals the id."
+    - "`exact` means that exactly one page has a `notion_id` that equals the id."
+    - "`integrity_error` means that there is more than one such page. The procedure returns the slugs of all of them, the operator fixes the discrepancy, and a memory intent about this object is answered with a refusal while there are several such pages."
+    - "Ids are compared in the canonical form: an id with or without hyphens, in uppercase or lowercase, is the same id."
+    - "Identity is established by the equality of `notion_id`; a semantic match, shared tokens, a matching title or a matching alias make a page only similar."
+    - "A candidate is a live page of one of the `gbrain_anchor_types` types."
+    - "The page at the object's conventional address (`gbrain_anchor_shape.slug_prefixes`) is a candidate too, if it exists: the search lags behind a write, and a page to which an event or a fact has just been added is found by an id search with a delay. `absent` is established by an empty search and an empty conventional address together."
+
+# ---------------------------------------------------------------------------
+# This is a SCHEMA, not prose: the evaluation result is parsed by a zod schema.
+# Encoding: `field` = a scalar field, `array` = a list of values,
+# `array_of_objects` = a list of objects with nested fields.
+# ---------------------------------------------------------------------------
+evaluation_result:
+  shape:
+    outcome: field
+    operating_phase: array
+    scope:
+      object_type: field
+      object_id: field
+    detections:
+      kind: array_of_objects
+      item:
+        # `type` is a value of `detector_labels`; the result schema checks this.
+        type: field
+        claim: field
+        why_now: field
+        # Each evidence item is an object read by a tool call in this run: the server it was
+        # read from and its identifier (`INV-036`).
+        evidence:
+          kind: array_of_objects
+          item:
+            server: field
+            ref: field
+        counterevidence_checked: array
+        uncertainties: array
+    user_facing_or_notification_message:
+      presence: "when needed"
+  rules:
+    - "For an App-triggered evaluation, the reasoning result exposes the decision basis in a machine-checkable form but does not duplicate the domain actions already represented by tool calls."
+    - "The `outcome` `source_unreadable` is reserved: a run uses it to say that it did not read Notion at all. The App trusts the label only when it sees this itself (at least one Notion call failed and none succeeded), and then it retries the same run (ADR 0045). A label without such evidence is a run failure: otherwise it would postpone the row indefinitely."
+    - "Every evidence ref must match an object that Claude actually read through a tool."
+    - "The type of a detection is exactly one of `detector_labels`; a claim that no label fits is not a detection."
+    - "The `evidence` and `counterevidence_checked` of each detection are non-empty, and so are their elements: a claim without an object that was read and without a named refutation is not a detection."
+    - "`outcome` is a snake_case label for how the run ended."
+    - "The `scope` of a run about an object is its type and id; a scheduled review has no object, so its `scope` is `object_type: Review` and its `object_id` is the `event_id` of the occurrence. The detections of a review that comments are the labels it puts into the packet; a review without comments has no detections."
+    - "Actual durable effects are confirmed by the execution trace: the effects the App applied and the successful calls of GBrain write tools; no separate parallel action protocol is created in the structured result."
+
+# ---------------------------------------------------------------------------
+# For an App-triggered run, the App passes Claude only a narrow trigger envelope.
+# `example` is an example of values, not an enum.
+# ---------------------------------------------------------------------------
+trigger_envelope:
+  # The fields of each variant of the envelope: a Notion or channel event, the continuation of
+  # a thread or page, a scheduled review.
+  variants:
+    event:
+      - mode
+      - trigger.type
+      - trigger.event_types
+      - trigger.event_id
+      - trigger.timestamp
+      - trigger.entity_id
+      - trigger.page_id
+      - trigger.discussion_id
+      - trigger.updated_property_ids
+    continuation:
+      - mode
+      - trigger.type
+      - trigger.event_id
+      - trigger.discussion_id
+      - trigger.page_id
+      - trigger.reason_code
+    review:
+      - mode
+      - trigger.type
+      - trigger.event_id
+      - trigger.timestamp
+      - trigger.since
+  example:
+    mode: event_evaluation          # one of the `workflow_modes` values
+    trigger:
+      type: page.properties_updated
+      event_types:
+        - page.content_updated
+        - page.properties_updated
+      event_id: "evt_..."
+      timestamp: "2026-07-27T10:30:00+03:00"
+      entity_id: notion-page-id
+      page_id: notion-page-id
+      updated_property_ids:
+        - status-property-id
+  rules:
+    - "`app_db` rows, raw technical details of the webhook, retry bookkeeping and the database schema are not passed into the prompt."
+    - "The event envelope carries `type`, the type of the event that closed the window, and `event_types`, the types of all the events the window collected, sorted by name. If a page body edit or a word from the channel is among them, it remains an origin, whatever event closed the window."
+    - "`trigger.discussion_id` is present only when a comment event touched the window: it is the thread in which the person has just commented. The envelope does not carry the content of the comment; the model rereads the thread itself."
+    - "The continuation envelope carries `type` (the mode it wakes) and four origin fields: the occurrence (`event_id`: the row and its version), the thread (if there is one), the page and the technical reason (`INV-020`)."
+    - "The review envelope carries `type` (`review.<mode>`), the occurrence (`event_id`: `review:<mode>:<period key>`), its time (`timestamp`) and `since`, the time of the last carried-out occurrence of this review, no further back than two periods. A review has no page or thread: it decides for itself what to read, and `since` bounds “what has changed” by a point in time, not by a snapshot of the state."
+
+# ---------------------------------------------------------------------------
+# A closed vocabulary. The field that accepts these values is called `reason_code`
+# (singular); the block is named `reason_codes` by the convention of the other lists in the file.
+# The consumer is the scheduled checks table in the App.
+#
+# BOUNDARY: this is a TECHNICAL wake-up reason, not a classification of a semantic issue.
+# Semantic signals live in `detector_labels` and are NOT mixed with this vocabulary.
+# ---------------------------------------------------------------------------
+reason_codes:
+  - await_external_event
+  - user_snooze
+  - safety_recheck
+  - deadline_followup
+  - resolution_reconciliation
+reason_code_rules:
+  - "`reason_code` explains a technical wake-up reason but does not classify a semantic issue."
+  - "Only the App names `resolution_reconciliation`, when it finds a thread it manages resolved. No step that requests a continuation (a run or the chat) names it, and the wire schema does not offer it: this reason switches on a mode that writes to GBrain. A row with this reason wakes `closure_processing`, not a recheck."
+  - "`INV-019` `reason_code` uses the `reason_codes` vocabulary and does not classify a semantic issue."
+
+# ---------------------------------------------------------------------------
+# These are operational guards, not domain invariants: they are adjusted based on evals,
+# latency and missed-context analysis.
+# ---------------------------------------------------------------------------
+retrieval_budgets:
+  max_total_tool_calls: 10
+  max_notion_tool_calls: 6
+  max_gbrain_tool_calls: 4
+  max_graph_depth: 1
+  max_volunteered_pages: 3
+  max_new_discussions_per_run: 2
+  max_notifications_per_run: 1
+  # A review reads several databases whole, and the limit for evaluating changes does not
+  # accommodate it (ADR 0036): for each database, a read of its schema and a query, then pages and
+  # threads opened separately.
+  per_mode:
+    daily_control:         { max_total_tool_calls: 12, max_notion_tool_calls: 12, max_gbrain_tool_calls: 0 }
+    weekly_control_review: { max_total_tool_calls: 32, max_notion_tool_calls: 26, max_gbrain_tool_calls: 6 }
+    strategic_review:      { max_total_tool_calls: 28, max_notion_tool_calls: 20, max_gbrain_tool_calls: 8 }
+    deep_review:           { max_total_tool_calls: 22, max_notion_tool_calls: 16, max_gbrain_tool_calls: 6 }
+
+# ---------------------------------------------------------------------------
+# The scope of reviews: which days each review covers and when an Inbox item is stale. The age of
+# an item is counted from `captured_at`, not from an edit.
+# ---------------------------------------------------------------------------
+review_scope:
+  daily_horizon_days: 3
+  weekly_window_days: 7
+  inbox_stale_after_days: 3
+  rules:
+    - "An Inbox item is stale when at least `inbox_stale_after_days` days have passed since `captured_at` and it is still in the Inbox; comments on it do not change this."
+    - "The Daily Control shows time-fixed commitments on the days of its horizon, including those that belong to a paused Project; the rest of the `Scheduled` Tasks for today; past `Deadline` and `Date` values of unfinished work; a few Available Now candidates; proposals waiting for a decision; and stale Inbox items in a single line with their count."
+    - "The Weekly Control Review goes through the stale items one by one: each is clarified with the person, and an item on which a system question is still unanswered gets no new question."
+
+# ---------------------------------------------------------------------------
+# The schedule of each review when the `REVIEW_*` environment variable is not set; `off` switches
+# the review off (`docs/2-system.md` § “Schedule and recurrence”, ADR 0036).
+# ---------------------------------------------------------------------------
+review_schedules:
+  daily_control: "daily 08:30"
+  weekly_control_review: "weekly sun 18:00"
+  strategic_review: "monthly 1 10:00"
+  deep_review: "off"
+
+# ---------------------------------------------------------------------------
+# The profile of one App-triggered run (ADR 0012). The axis is the mode (ADR 0008):
+# `default` is the profile of all modes, `per_mode` is how the profile of a mode differs from it.
+# The model, effort and `max_budget_usd` are shared: the M10 calibration differentiates them.
+# The turn ceiling is derived from the mode's reads budget: a run makes about one call per turn,
+# so the ceiling has room for the reads budget, the Skill files that the mode opens first and the
+# steps a run always takes, plus a margin for App calls (ADR 0036). The profile's `toolBudgets`
+# are the `retrieval_budgets` above: the SDK does not enforce them; the Skill keeps to them and
+# the trace checks them.
+# Under a subscription, `max_budget_usd` is a CLI estimate, a per-run cost safeguard.
+# ---------------------------------------------------------------------------
+run_profile:
+  default:
+    model: claude-opus-5-5
+    effort: high
+    thinking: adaptive
+    max_turns: 25
+    max_budget_usd: 5
+  per_mode:
+    daily_control:         { max_turns: 35 }
+    weekly_control_review: { max_turns: 60 }
+    strategic_review:      { max_turns: 60 }
+    deep_review:           { max_turns: 45 }
+
+# ---------------------------------------------------------------------------
+# The fields of the run trace — the observability baseline (`docs/2-system.md`
+# § “Observability and cost”): `id` is the name of the field, `note` says what it is in the App.
+#
+# `required_when` says from which point the field must be in the run trace:
+#   admitted       the row exists
+#   init           the run reached the init message (may be an empty list)
+#   result         the run reached the result message
+#   completed      the run ended with a valid result
+#   failed         the run failed, was deferred or was abandoned — the reason
+#   derived        not stored: derived from other fields
+#   not_collected  not collected (with the reason in `note`)
+# Operational check commands are NOT included here: they belong to the runbook.
+# ---------------------------------------------------------------------------
+run_trace_fields:
+  - id: trigger
+    required_when: admitted
+  - id: mode
+    required_when: admitted
+  - id: execution_surface
+    required_when: admitted
+    note: "claude_chat or app_triggered"
+  - id: behavior_contract_version
+    required_when: init
+    note: "the plugin (name, path) from init, the digest of its contents and the CLI version: a run's capability is determined by the CLI as well, not only by the plugin"
+  - id: model
+    required_when: result
+  - id: mcp_servers_attached
+    required_when: init
+  - id: tool_calls
+    required_when: init
+    note: "server, tool and whether the call succeeded; payloads are not stored (GAP-07)"
+  - id: source_references
+    required_when: completed
+    note: "evidence of the validated result"
+  - id: structured_detections
+    required_when: completed
+    note: "the validated result"
+  - id: proposed_actions
+    required_when: completed
+    note: "proposals among the effects the App applied"
+  - id: policy_decisions
+    required_when: init
+    note: "perimeter denials from the result and App MCP refusals"
+  - id: runtime_effects
+    required_when: completed
+    note: "effects applied by the App (ADR 0014)"
+  - id: writes
+    required_when: derived
+    note: "writes into the domains: calls to the tools of the bundles that write and the applied App effects through which the system writes to Notion"
+  - id: latency
+    required_when: result
+    note: "the time the App spends around the call and `duration_ms` from the result"
+  - id: token_usage
+    required_when: result
+    note: "`modelUsage` from the result"
+  - id: technical_errors
+    required_when: failed
+    note: "the reason, one per run: why it failed, was deferred or was abandoned"
+  - id: user_feedback
+    required_when: not_collected
+    note: "the person's reaction to the conclusion; an M10 deliverable"
+run_trace_rules:
+  - "The system explains itself by a verifiable execution trace, not by a hidden chain of thought: the fields of `run_trace_fields`."
+  - "Traces are structured run trace records in `app_db`: the `run_traces` ledger row, the run snapshot and the lists. They are not domain memory and are not used automatically in reasoning."
+  - "Every run leaves an observable execution surface and the version of the behavior release; both are fields of `run_trace_fields`."
+
+# ---------------------------------------------------------------------------
+# The JSON columns of `app_db`, and why each of them is a document (`INV-083`). JSON holds only
+# a value whose shape the App does not define, or a nested structure that its single reader
+# consumes whole; records that are counted, filtered or joined are table rows
+# (`docs/2-system.md` § “Implementation inventory”). The key is `<table>.<column>`, as the
+# database names them.
+# ---------------------------------------------------------------------------
+json_documents:
+  webhook_receipts.diagnostics: "a projection of the event for diagnostics: the source and the type of the event determine the shape"
+  notification_outbox.payload: "a message that the channel renders whole"
+  pending_actions.effects: "part of the proposal's immutable contract: the validity rule reads it whole"
+  pending_actions.preconditions: "part of the proposal's immutable contract: revalidation reads it whole"
+  run_traces.trigger: "the `trigger` field of the trigger envelope (`trigger_envelope`; the mode is a separate column): the run received it whole, and it is read whole; runs about a page are looked up by the `page_id` column"
+  run_snapshots.init: "the CLI's init message: the CLI determines the shape"
+  run_snapshots.result: "the result that passed the schema (`evaluation_result`): the Skill's contract determines the shape"
+
+# ---------------------------------------------------------------------------
+# The lifecycles of runtime records. A `status` field without a list of values would mean a
+# partial index and a scheduler query against statuses that nobody declared.
+#
+# The boundary they share is drawn in `runtime_record_rules` below.
+# ---------------------------------------------------------------------------
+runtime_record_rules:
+  - "The status says WHERE the row is in its lifecycle. Whether anyone is CURRENTLY working on it is a different question, and the lease (`locked_until`) answers it. The worker's selection filters by the lease expiry, not by the status."
+  - "Consequence: a row claimed by a run that crashed becomes claimable again on its own as soon as its lease expires. A non-terminal status does not stop the selection, and this is what “a continuation survives a restart” means."
+
+webhook_receipt:
+  statuses:
+    - received
+    - processed
+    - rejected
+    - failed
+  # `failed` is NOT terminal: a receipt has no attempt counter, so “failed means the end” would
+  # lose an event over a single database failure, just when the provider is still ready to
+  # redeliver it. An event is settled when its receipt is `processed` or `rejected`; every other
+  # status means “work started and not finished”.
+  terminal: [processed, rejected]
+  rules:
+    - "`rejected` means the event arrived whole and was discarded by a rule (the system's own write, the relevance gate, or no consumer for it). It is not an error but a recorded decision: without it, “did not arrive” cannot be told apart from “arrived and was of no interest”, and it is this difference that diagnoses intake defects."
+    - "`processed` means handling is complete, including when the whole of the handling is a reply to the person (a button that changes nothing, or a snooze without a time). The difference from `rejected` is not whether the state changed but whether the event reached its handler."
+    - "`failed` means handling crashed and did **not** complete. The provider redelivers, the redelivery finds the existing row by the pair `(source, external_id)` and continues the work from it: idempotency rests on the key, not on the status. No transaction is needed for this: merging the event into the window is idempotent by content (the same property ids), and recording the decision is monotonic. A redelivery that finds the window already running or closed may cost an extra run, but not a double domain effect — that is guaranteed by `pending_action`."
+    - "`received` means the same as `failed`, with no reason named: the row exists, and the work on it is not complete. Both states are recoverable, and a redelivery by the provider is a chance to finish the work, not a reason to call it a “duplicate”."
+    - "`attempt_number` is the PROVIDER's attempt number, taken from the event itself. It does not count our attempts."
+
+scheduled_check:
+  statuses:
+    - pending
+    - running
+    - done
+    - failed
+  terminal: [done, failed]
+  # The minimum time between the start of a run without a person and the time of the continuation
+  # it schedules. Why, and what it is counted from: the `autonomous_min_lead_minutes` rule below.
+  autonomous_min_lead_minutes: 60
+  # How many days after its scheduled time a `safety_recheck` wake without a thread waits for a run
+  # before it is retired. Why: the `safety_recheck_max_age_days` rule below.
+  safety_recheck_max_age_days: 7
+  # A row whose run did not reach Notion waits (ADR 0045). The pause is twice as long as the row has
+  # already been waiting consecutively, and it stays between `min_minutes` and `max_minutes`. The
+  # limit is `limit_hours`, counted from the first of the row's consecutive deferrals. The same
+  # rule applies to all run queues: the `notion_hold` rule below.
+  notion_hold:
+    min_minutes: 15
+    max_minutes: 60
+    limit_hours: 24
+  rules:
+    - "Claiming a row is setting `locked_until` to a time in the future, and the status stays the same. `running` is written together with the attempt, right before the run, so it means that the row's run has started. It does not filter the selection (`runtime_record_rules`)."
+    - "`attempt_count` counts the attempts that did not yield a conclusion. It increases when a row has caused a run, before the launch: a run that killed the process must still count as an attempt, because nobody is left to report what happened. The attempt is refunded when the run has reached a conclusion but the row has changed under it (`superseded`). That run did not fail, and counting it as a failure would drive a row to `failed` although none of its runs failed. How many runs a frequently changing row may cause is decided by the daily limit, not by the counter. A claim does not touch the counter; otherwise a loop of restarts would put the whole queue into `failed` without a single run ever being launched. A budget denial does not touch the counter either. The reason for the wake has not gone away, and counting a denial as an attempt would exhaust the row's attempt limit through the very denial that protects the budget. For the same reason the attempt of a run that hit the plan quota is refunded (`deferred`, ADR 0012): it is the same denial, only reported after the launch rather than before it. The attempt of a run that did not reach Notion is refunded as well (ADR 0045): what is broken is not the run path but an external state, and then it is the row itself that waits (the `notion_hold` rule below). Reaching the attempt limit moves the row to `failed` with `last_error`: without the attempt limit, a cause that reliably kills the run would consume the daily limit endlessly."
+    - "A run denial does not reschedule the row: its time stays the one the person or the rule named, and it is the scheduler that waits, not the row (`run_priority`)."
+    - "A run that did not reach Notion does not fail the row: the App retries the same run (ADR 0045). The attempt is refunded, and the row's wait is governed by the `notion_hold_until` mark, not by its scheduled time. The scheduled time stays the one the person or the rule named, and the pause is counted from `notion_held_since` (`notion_hold`). The queue does not claim a waiting row, and a waiting row does not occupy the head of its group; retirement applies to it as well. A change to the row (a moved continuation, a person's event in the evaluation window) clears the wait. A run that reached Notion clears the pauses of the rows as well, but it clears the pause of each row at most once per consecutive wait of that row. The time of each row's first deferral stays until the row's own run reaches Notion. A row that has waited `notion_hold.limit_hours` waits no longer: what follows is an ordinary failure, and the breaker counts it. The person's snooze never waits: a reminder comes on time or not at all, and past the attempt limit the App tells the person (`INV-108`)."
+    - "The App tells the person about a wake whose time the person named (`user_snooze`, `deadline_followup`) and that has moved to `failed`, in one system message: there was no run that would have told the person, and silence here is the worst kind of failure. The delivery key is the one that this wake's run would have set (the row and its version), so a reminder the run managed to queue before it failed stays the only one. The message breaks through quiet hours, as a reminder would; `failure_noticed_at` marks the wakes the person has already been told about (`INV-108`). The run trace reports the failure of a wake whose time the system chose."
+    - "The closure of a resolved thread has a place of its own in the same queue: a thread has at most one open wake and at most one open closure, and neither reschedules the other. `requestClosure` only inserts a row with the reason `resolution_reconciliation`, due immediately: if an open closure already exists, the request changes nothing, and a row that is going into a run is not rescheduled. A new resolution after a completed closure is a new closure. A closure does not touch a thread's wake (recheck, snooze, deadline), and the wake does not disappear with the closure. A closure driven by the passage of time is requested by the resolved-thread reconciliation (key `sweep`)."
+    - "`requestSafetyRecheck` is an App entry point through which the periodic safety sweep wakes a page. It only inserts a `safety_recheck` wake without a thread, due immediately, as `requestClosure` does. If an open wake of the same page and reason already exists, the request changes nothing and does not reschedule the time a run named. A wake with a different reason, the person's snooze included, is a separate item of attention, and the request does not touch it."
+    - "A `safety_recheck` wake without a thread that has produced no run within `safety_recheck_max_age_days` after its scheduled time is retired as `failed` with a recorded reason: a situation nobody has looked at for a week is brought up by the Weekly Control Review, and what has piled up beyond the daily limit would otherwise use up that limit on the day the run gates open. Age is counted from the scheduled time, not from creation: a wake scheduled for the future does not age while it waits. A thread's continuation does not age: its `run_at` can legitimately be half a year ahead, and it keeps the person's conversation going."
+    - "There is no cancellation. A recheck always rereads the fresh state, so a needless continuation costs one run that finds nothing; a mechanism for silently canceling attention would cost more than that run."
+    - "Snoozing the same thread again moves the `run_at` of the existing row and does not create a second one. Along with the new time, the update writes the reason set by whoever moved the row: the reason goes into the prompt (`INV-020`) and determines the class of the run, so a row moved without it would wake a run with the old reason, and that reason would be false both in the prompt and in the class."
+    - "`user_snooze` stands for a time the person named, so only a step in which the person speaks for themselves sets this reason: the chat, a reply in a thread that Personal Management System manages, a channel reply to a system message. An exempt run that carries none of the person's words (a scheduled review, a due continuation) does not set this reason. Only the person moves a snooze that has not fired yet: a system request on that snooze's thread is refused instead of moving the time the person named. A snooze whose run is already in progress is not protected: the time the person named has come, and setting the next time is that very run's job (`docs/3-policy.md` § “Recheck”)."
+    - "The person's snooze that has not fired yet keeps a review away from the snooze's page and thread: a review carries no new event, so until the time the person named it does not comment on that page, propose changes on it, notify about that thread or include in a packet the buttons of a proposal from it. The App refuses any of these writes and names that time. A snooze set while a review is running stops the applying of the run's writes before the first write. A run for an event or a continuation decides on its own whether the person must react to a new event before that time (`docs/3-policy.md` § “Snooze”)."
+    - "A continuation scheduled by a run without a person wakes no sooner than `autonomous_min_lead_minutes` after the start of that run. Without this limit, a continuation's run could reschedule its own row to be due immediately and wake itself endlessly: a row that changed under the run has its attempt refunded (`superseded`), the reason `deadline_followup` is exempt from the daily limit, and the breaker does not count runs that complete, so only the plan quota would stop the loop. The limit is counted from the start of the run, not from the time of the request: the same request gets the same answer both during the run and when the run's writes are applied, and a time the run took from `get_runtime_state` does not affect the limit. The limit is an hour because a recheck rereads the fresh state, and any sooner it would see the same state; a run whose matter will not wait an hour should act at once, not put it off. A step in which the person speaks for themselves has no limit: “remind me in ten minutes” is the person's right."
+    - "There is one active wake per attention thread, and separately one active closure (the reason class: `resolution_reconciliation` versus the rest). The thread is identified by `discussion_id`; where there has been no conversation yet (deadline follow-up, safety recheck), the pair `(page, reason_code)` takes its place. Two different `reason_code` values on one page are two different wakes, not a duplicate: `reason_code` goes into the prompt (`INV-020`), so merging them into one row would make the surviving row a false statement about the reason."
+    - "Two runs for two different wakes on one page never produce two nudge messages, and what guarantees this is not the unique index on `(page, reason_code)` but the `pending_action` fingerprint: an identical proposal from both runs yields one row."
+
+# ---------------------------------------------------------------------------
+# The table that implements debounce and coalescing. Why it is separate from `scheduled_check`,
+# and why a window that is unique per page is not an attention thread: `docs/2-system.md`
+# § “`evaluation_windows`”.
+# ---------------------------------------------------------------------------
+evaluation_window:
+  statuses:
+    - pending
+    - running
+    - done
+    - failed
+  terminal: [done, failed]
+  rules:
+    - "There is one open window per page. Each further relevant event of the same page merges into it: the changed property ids are combined, the list of event types is extended and `not_before` is pushed back."
+    - "A window that has received no new events for a long time (`evaluationWindow.maxAgeDays`) and has produced no run is retired as `failed` with a recorded reason. Age is counted from the last event, not from creation: a page edited once every few days keeps one window for weeks, and that window stays fresh the whole time. The age limit exists because the attempt limit does not catch such a window: the counter grows only past the run gates. So a window with no launcher is immortal by construction, and the backlog that piled up would, on the day a launcher appears, use up the daily limit at midnight and leave the fresh events in the queue behind it."
+    - "Pushing the window back is bounded by a ceiling counted from the window's creation. Without it, continuous editing would keep the window open indefinitely, and the evaluation would never take place."
+    - "Claiming a row, returning it to the queue, the attempt counter and the wait for Notion are the same as in `scheduled_check` (`runtime_record_rules`): the status says where the row is in its cycle, and the lease says who is working on it at the moment. A person's event that merges into the window lifts the wait: the person's words are tried at once, not after the pause the window had been waiting out until that event."
+    - "The window carries no semantic state: it holds the identifiers of the event, not a conclusion about it. The model rereads the state, as on the continuation path."
+    - "A page the person created in the Inbox database is the window fact `inbox_item_created`: the run of such a window is the processing of an Inbox item (`inbox_capture`) in `dialogue` mode. Each Inbox item gets a run of its own: a window belongs to a page, so items put in the Inbox one after another are not mixed in a single conclusion."
+    - "A person's comment in a discussion the system manages (`system_discussion`) is the window fact `person_replied`. The run of such a window is the person's reply (`managed_discussion_reply`), not an autonomous evaluation. A merge does not clear the fact: the person has already had their say, and a later edit of the same page does not cancel that."
+    - "A person's reply in the channel to a system message is the window fact `channel_inbound`, always together with `person_replied` and the thread's `discussion_id`: the channel consumer opens the window, because the webhook filters out the bot's write. The person's words are already in Notion as the bot's quoting comment in the thread: the window carries only identifiers, and the trigger envelope carries `type: channel.message` and `event_id: telegram:<update_id>`. The run of such a window has the origin `channel_inbound`, which ranks above a reply in a thread, and the thread's mode (key `system_discussion`). The channel serves the dialogue that the system starts: text that is not a reply to a system message does not enter a window (ADR 0022)."
+
+# ---------------------------------------------------------------------------
+# The registry of discussions the system has written in. Why it exists and how intake reads it:
+# `docs/2-system.md` § “System-managed attention episodes”.
+# ---------------------------------------------------------------------------
+system_discussion:
+  rules:
+    - "A discussion enters the registry when the system has written in it with an attention comment: opened it or replied. In any other case it does not enter: the system writes its comments only through the App. The origin comment with which a conversion closes an Inbox item is outside the registry: the item goes straight to the trash, and there will be no conversation there. The row carries the page, the thread's mode and the times of the first and the last write; the registry does not hold the comment's text — the text lives in Notion."
+    - "The system manages a discussion if it is in the registry or a continuation or proposal is open on it. A person's reply in such a discussion is a run of the class `person_speaks` (`managed_discussion_reply`); a comment outside such a discussion is an ordinary page change."
+    - "A thread's mode is set by the system's first write in it, and later writes do not change it. A thread on an Inbox item has the mode `dialogue`, whoever opened it: a reply about an Inbox item is its processing. Any other thread has the mode of whoever opened it; the chat's mode is `dialogue`. If Notion did not return the page type at the first write, the mode stays that of whoever opened the thread."
+    - "A reply's run has the mode `dialogue` if the thread's mode is `dialogue`; otherwise it has `event_evaluation`."
+    - "A row whose discussion the system has not written in for `maintenance.systemDiscussionRetentionDays` days is pruned. A person's reply in such an old discussion, with no continuation or proposal, is an ordinary page change: a conversation in which the system has been silent for half a year is no longer its own."
+
+# ---------------------------------------------------------------------------
+# The notification packet: the maximum number of proposals it carries, each with a line and
+# buttons. The rest, which await the person's decision, the packet reports as a count computed by
+# the App (ADR 0039).
+# ---------------------------------------------------------------------------
+notification_packet:
+  max_proposals: 3
+
+# ---------------------------------------------------------------------------
+# The App's work driven by the passage of time: the periodic safety sweep and the reconciliation
+# of resolved threads. What each does and why: `docs/2-system.md` § “Periodic safety sweep”,
+# `docs/2-system.md` § “Resolved-thread reconciliation”, ADR 0037 and ADR 0038.
+# ---------------------------------------------------------------------------
+sweep:
+  tick_minutes: 60
+  wakes_per_tick: 5
+  wakes_per_day: 10
+  # How many hours a situation stays new: a review brings up an older one.
+  recency_hours: 72
+  # How many days before its deadline a `Waiting For` Task becomes a risk.
+  deadline_lead_days: 2
+  reconciliation:
+    tick_minutes: 20
+    # How many days after the system's last write a thread stays in the scope of the reconciliation.
+    horizon_days: 14
+    anchors_per_tick: 20
+  rules:
+    - "The sweep wakes; it does not decide. It wakes a situation that a methodology rule sees with a `safety_recheck` continuation with no thread (`requestSafetyRecheck`), and what to do about the situation is decided by the run. The sweep writes nothing to Notion, to delivery or to proposals."
+    - "A candidate is not woken if the situation arose earlier than the `recency_hours` threshold (a review brings it up); if the candidate has already been woken on the same ground; if the page is already being dealt with (a continuation, an evaluation window or a proposal is open on it); or if, after the situation arose, a run reached a conclusion about one of its pages. The ground is the date's value with its phase (“near”, “passed”) for time rules and the last edit of the participants for structural ones; the memory holds its hash, not the value."
+    - "In one tick the sweep wakes no more than `wakes_per_tick` pages, and in one local day no more than `wakes_per_day`: deadlines first, then the check date, then structural situations. The tick does not proceed when the run gates of an autonomous run are closed: a wake that cannot start would only join the queue."
+    - "A deadline is a risk when it has passed on an open Task, or when it is closer than `deadline_lead_days` on a `Waiting For` Task: the work is stalled on a dependency. An approaching deadline on work that can be done is not a risk, and `Someday/Maybe` is not a commitment."
+    - "The reconciliation requests closure only for a thread in which the system has written and whose thread anchor and last system comment the registry knows: the thread is not among the unresolved threads for that thread anchor, and the system's comment is in place. A repeat request is made only after the thread has been seen open again; it was also open when the system wrote in it. If the system's comment is deleted (Notion marks it deleted or does not find it), the thread is deleted and there is no closure. The scope is the threads the system wrote in within `horizon_days` days and the threads with an open continuation or proposal."
+
+# ---------------------------------------------------------------------------
+# An occurrence of a scheduled review. Why one row per period and why there is no catching up:
+# `docs/2-system.md` § “Schedule and recurrence”, ADR 0036.
+# ---------------------------------------------------------------------------
+review_occurrence:
+  statuses:
+    - pending
+    - running
+    - done
+    - failed
+  terminal: [done, failed]
+  rules:
+    - "An occurrence is identified by the review and the local key of its period: a date, an ISO week, a month or a quarter in `APP_TIMEZONE`. The pair is unique, so a producer tick, a restart, a clock change and an edit of the time in the schedule give no second occurrence within the period."
+    - "There is no catching up: an occurrence that has not taken place by the end of its window is retired as `failed` with a recorded reason. The window of a daily review runs to the end of its local day; the window of every other review runs to the next occurrence."
+    - "The person is told about a `failed` occurrence — both after exhausted attempts and when retired past the window — in one system message with a delivery key per review and period; `failure_noticed_at` marks the occurrences the person has been told about (`INV-105`). This holds for every review."
+    - "Without a configured delivery channel or without the runner, the producer schedules no occurrences: the main result of a review is a packet for the person, and without them it can be neither delivered nor produced."
+    - "Pruning keeps the last carried-out occurrence of each review: the next occurrence takes its `since` from it."
+    - "Claiming a row, returning it to the queue, the attempt counter and the wait for Notion are the same as in `scheduled_check` (`runtime_record_rules`)."
+
+notification_delivery:
+  statuses:
+    - pending
+    - sent
+    - failed
+  terminal: [sent, failed]
+  rules:
+    - "There is no “sending” status: the lease expresses the claim, as in `scheduled_check`."
+    - "`next_attempt_at` and `locked_until` answer different questions. The first says when the row may be tried at all (backoff, the provider's `retry_after`, quiet hours), the second that someone is trying it at the moment. One field for both would turn the queue into the same trap as a status serving as a lock."
+    - "`failed` means there will be no delivery: the attempt limit is exhausted, there is no channel, or the shape of the message cannot be recognized. A single unsuccessful attempt does not yield `failed`."
+    - "A `sent` row carries `external_id`, the message id that the channel reported, if it reported one. The id is what lets the person reply to the message (the reply finds the thread) and lets the system edit that same message when a proposal is decided or executed. Editing is cosmetic: its failure changes neither the decision nor the execution (`INV-023`)."
+
+# ---------------------------------------------------------------------------
+# The lifecycle of a pending approval. Who writes, why the row exists from the time of the
+# proposal and why the table is not an attention surface: `docs/2-system.md`
+# § “Approval differs by who performs the write”.
+# ---------------------------------------------------------------------------
+pending_action:
+  statuses:
+    - proposed
+    - approved
+    - executed
+    - rejected
+    - expired
+    - conflict
+    - failed
+  terminal: [executed, rejected, expired, conflict, failed]
+  # The attempt limit of an approved action, set per kind of Notion failure (ADR 0044): for
+  # temporary unavailability, hours counted from the approval; when access is refused, attempts at
+  # one-hour intervals.
+  execution:
+    unavailable_max_hours: 24
+    no_access_max_attempts: 3
+  rules:
+    - "Only an autonomous run creates a row. A proposal made in the chat and left unanswered in the same turn stays an Inbox item (`INV-015`): it needs no executable contract, because returning to it will again be a conversation."
+    - "An effect is a property change in canonical terms: the page, the property and the value (`canonical_writes`). Effects are fixed at the time of the proposal and are not recomputed at approval. Exactly what the person was shown is executed, as a system write through the App (`NotionWriter`). A proposal is checked in full before it reaches the person, with the same check as the execution: the preconditions on a freshly read page and the encoding of the values according to the page's canonical type and the types of its properties. A proposal that cannot be executed is refused with a reason."
+    - "There are never two open proposals with identical effects: the fingerprint of the effects is unique among rows in a non-terminal status. Preconditions are not part of the fingerprint — the same change with a different check is still the same change. A terminal proposal does not block a new one."
+    - "A proposal declares what it will change (`effects`), and every declared effect must have a precondition that will see **that particular effect**: about the same page and the same property, and able to see this write. `property_equals` sees the write of an option and the clearing of an option. `property_empty` sees the write of a value into an empty property. `property_reads_as` sees a write of any kind that changes the value the condition names (that value must differ from the one being written), so it is `property_reads_as` that covers a change to a filled date, text or relations (ADR 0024). A proposal whose effect nothing can observe is not accepted, and neither is an action that touches two different objects or writes one property twice; creating a page is not a declarable effect (`GAP-24`). One function checks both clauses, and it checks them twice: at the time of the proposal and at the time of execution, because a row outlives the rule that let it in. Why correspondence is what makes a domain effect once-only, and why `unchanged_since` is not a tie: `docs/2-system.md` § “Preconditions and executor”."
+    - "An approved action for which Notion is temporarily unavailable (a rate limit, a server error, a timeout, a bot not yet known) is retried every hour until `execution.unavailable_max_hours` hours have passed since the approval; one for which Notion refuses access (401, 403, a page without content) gets `execution.no_access_max_attempts` attempts: access does not come back by itself. After that it is `failed`, with a non-execution kind (ADR 0044). Without a limit, a stuck action would stay invisible, and the person would believe it had been executed."
+    - "A proposal's fate lands in its thread as a system write exactly once per transition (`INV-107`, ADR 0043): the person's decision — approval or rejection — and the non-execution of what was approved; execution and expiry are not written to the thread. The same step rewrites the message about the proposal. A run reads the fate of its proposal from the thread."
+    - "Execution is once-only by construction: the executor is a single loop, the status is monotonic, the preconditions observe the effect, and the write is one `pages.update` that sets the same values. Approval and execution are two steps (`docs/2-system.md` § “Preconditions and executor”)."
+    - "Approving again is harmless: if the status is anything other than `proposed`, nothing happens."
+    - "Only the person decides on a proposal: by a channel button or in the chat (only the chat sees `approval_decide`). A “yes” given in words, in a thread or in a channel reply, is not a decision: a run that carries such words tells the person that the buttons decide, and puts the proposal into its notification. A run neither approves nor rejects anything, whether it carries the person's words or its mode is in the approval class: the approval service accepts a decision only from a channel button and from the chat. So no step decides on a proposal it made itself: only a run proposes, and the person must see what will be executed — otherwise the approval gate would guard the proposal against the very party that made it."
+    - "There is no withdrawal of a proposal on the system's judgment, and a cancellation by the person is `rejected`. A proposal is closed by the person, by execution, by the Daily Control that showed it, after which the person passed it by (`expired`), or by the person's change to the page after which the proposal's precondition no longer holds (`conflict`). Intake sees such a change, and the App checks the preconditions with the same evaluator as the execution: this is the same mechanical check that the executor would make anyway after a button press (ADR 0044). A proposal made unnecessary by changed circumstances, with no precondition broken, stays approvable until the person decides it or passes it by in the Daily Control: judging whether the change is still needed is up to the person."
+    - "`conflict` means that the state changed between the proposal and the approval — the model forms a new proposal (`INV-027`): in particular when the page stopped accepting a write that the check let through (a date that appeared on a Task being moved to `Next Action`). `failed` means that the action cannot be executed: the operation itself failed, the row cannot be read as a contract, the request cannot be accepted in any state of the page, or the precondition has no answer in this form (`undecidable`). A `failed` row is not the expected course of events and needs attention."
+    - "There is no expiry in hours. A proposal lives until the end of the first Daily Control that showed it, and the end of a review is the start of the next daily one: when the App places the next Daily Control occurrence, every still-`proposed` proposal shown by the delivered packet of the preceding Daily Control expires (`expired`). If the packet was not delivered, nothing expires; if the review did not take place, the proposal waits. The person's absence destroys nothing, and expiry measures “saw it and passed by”, not “was absent”."
+    - "“Shown” means a proposal from the `proposals` field of a delivered Daily Control packet: the structure of the packet, not an instruction to the model, guarantees that it is shown (up to three proposals with a line and buttons, the rest as a count that the App computes). The Daily Control reads the open proposals (`approval_view`) and cannot propose; the Weekly Control Review and the Strategic Review carry proposals but do not expire them."
+
+# ---------------------------------------------------------------------------
+# The list of slots for which a change of the carrier is worth a run. Why slots and not property
+# IDs, why the list is one-way and what is not in it: `docs/2-system.md`
+# § “Webhook intake”.
+# ---------------------------------------------------------------------------
+relevance_gate:
+  slots:
+    - task.status
+    - task.date
+    - task.deadline
+    - task.dependencies
+    - task.project
+    - task.behavior_system
+    - task.area_of_focus
+    - task.key_results
+    - project.status
+    - project.area_of_focus
+    - project.key_results
+    - project.behavior_systems
+    - area_of_focus.mode
+    - behavior_system.lifecycle
+    - behavior_system.supports_key_result
+  rules:
+    - "The relevance gate sees only the carriers that can be compared with an event: `native` and `relation`. The other kinds are invisible to it, and `absent` is not the only one: `page_body` and `gbrain` have no identifier at all, and `traversed` has a different one — the id of the relation being traversed, not of the semantic's carrier. A slot that could not be reduced to an identifier does not stop startup: it is named in the log, so a narrowing of the relevance gate is visible there and not from its behavior."
+    - "The comparison rule is defined over the event's list of changed property IDs. An event that carries no such list is not subject to this rule at all — its relevance is decided by the event type."
+    - "An edit to a page body (`page.content_updated`) is relevant when the page is in a Task or Project database: the database is taken from the event's `data.parent` and, when there is none, from reading the page. The edit merges into the evaluation window like any other change; an edit to the body of the remaining types is discarded with a reason (ADR 0040)."
+    - "The comparison runs over the canonical form of a property ID, into which each source is converted once, at the point of entry (`docs/2-system.md` § “Webhook intake”)."
+
+# ---------------------------------------------------------------------------
+# The numbers are here, not in the environment, on purpose: they are the runtime values most
+# subject to calibration, and they must stay contract values so that a change can be diffed —
+# the same as `retrieval_budgets`.
+#
+# What the limit covers, which runs are exempt and why the concurrency limit applies to all of
+# them: `docs/2-system.md` § “Observability and cost”.
+# ---------------------------------------------------------------------------
+run_budget:
+  daily_limit: 40
+  breaker_consecutive_failures: 5
+  concurrency: 1
+  work_row_max_attempts: 3
+  exempt:
+    reason_codes:
+      - user_snooze          # the person named the time directly
+      - deadline_followup    # the person named the date in `Deadline`
+    origins:
+      - review_schedule            # the person configured the schedule
+      - managed_discussion_reply   # a reply in a thread that Personal Management System manages
+      - channel_inbound            # a button press or a reply in the channel to a system message
+      - inbox_capture              # an item the person put in the Inbox
+      - operator                   # a launch the operator made manually (a gate command)
+  budgeted:
+    reason_codes:
+      - await_external_event       # there is no date anywhere, the system chose the time
+      - safety_recheck
+      - resolution_reconciliation
+    origins:
+      - evaluation_window          # a change in Notion that nobody asked for
+  # The only origin whose class does not depend on the origin itself: a continuation carries a
+  # `reason_code`, and it is the `reason_code` that names the budget class.
+  delegating_origins:
+    - scheduled_check
+  rules:
+    - "Each run origin belongs to exactly one budget class or delegates the classification to `reason_code`. Each value of `reason_codes` belongs to exactly one budget class. A new wake reason cannot be added without saying which budget class it belongs to: otherwise the conformance test fails."
+    - "An exhausted daily limit destroys nothing: budgeted origins stay as they were, and the run gates open with the new day. The App does not notify about the limit: it is a normal operating state. It notifies about the circuit breaker, once per opening, because five consecutive failures mean that something is broken; the delivery key is derived from the last failed run, so a restart does not enqueue a second notice."
+    - "`work_row_max_attempts` is the attempt limit of one queue row. It is tied to the daily limit: without the attempt limit, a single origin that reliably kills the run would consume the whole daily limit."
+    - "The day begins in `APP_TIMEZONE`. Without a time zone, “daily limit” is a phrase with no boundary."
+
+# ---------------------------------------------------------------------------
+# The order in which the scheduler takes due origins. Why this order and how the scheduler
+# enforces it: `docs/2-system.md` § “Run priority”.
+# ---------------------------------------------------------------------------
+run_priority:
+  # From the highest class to the lowest.
+  classes:
+    - name: person_speaks
+      origins:
+        - managed_discussion_reply   # a reply in a thread that Personal Management System manages
+        - channel_inbound            # a button press or a reply in the channel to a system message
+    - name: person_named_time
+      reason_codes:
+        - user_snooze
+        - deadline_followup
+    - name: person_capture
+      origins:
+        - inbox_capture              # an item the person put in the Inbox
+    - name: review
+      origins:
+        - review_schedule
+    - name: autonomous
+      origins:
+        - evaluation_window
+      reason_codes:
+        - await_external_event
+        - safety_recheck
+        - resolution_reconciliation
+  # The origin whose class is named by `reason_code` is the same as in `run_budget`.
+  delegating_origins:
+    - scheduled_check
+  # Origins the scheduler does not take: their run is started outside the queues.
+  unscheduled_origins:
+    - operator                       # a gate command launches the run itself
+  rules:
+    - "The scheduler takes an origin by class; within a class a fresh row goes before a retried one, and among equals the earlier moment goes first. A retried row has already had its run and failed, while a fresh one has had none: otherwise a row that reliably fails would hold back the rows that have done nothing wrong."
+    - "Each origin that the scheduler takes belongs to exactly one class or delegates the class to `reason_code`. Each value of `reason_codes` belongs to exactly one class."
+    - "The `autonomous` class is exactly the budgeted origins of `run_budget`: only they are stopped by the breaker and the daily limit, so they come last and do not hold back what the person asked for."
+    - "A run denial does not change the origin row — neither its moment, nor its attempt counter, nor its status. What waits is the scheduler, not the row: the run gates are its state, and closed gates write nothing to the rows."
+
+# ---------------------------------------------------------------------------
+# THIS KEY HOLDS ONLY THE LIST OF CLASS NAMES. The semantics of each class (what is allowed
+# autonomously, what needs approval, the full approval-required list) is owned by
+# `docs/3-policy.md` and is deliberately NOT duplicated here.
+#
+# Each name denotes an action, not the reason for it: the classes differ in what is done, not in
+# where the permission came from. The fourth class is named for actions, not for writes, because
+# approval comes before any durable effect — an external message to another person needs it on a
+# par with a status change.
+# ---------------------------------------------------------------------------
+permission_classes:
+  - "autonomous reads"
+  - "autonomous low-risk writes"
+  - "explicitly requested user writes"
+  - "approval-required autonomous actions"
+  - "prohibited/out-of-scope writes"
+
+# ---------------------------------------------------------------------------
+# The person's standing authorization, granted once and scoped.
+# THIS BLOCK HOLDS ONLY THE KEYS AND THEIR DEFAULT VALUES — the same division of ownership as in
+# `permission_classes`: `docs/3-policy.md` owns the semantics of each switch. The inline comments
+# below are hints for the values, not a separate authority.
+#
+# These are the most eval-tunable values in the corpus: they must remain contract values, not
+# sentences; otherwise a calibration change cannot be diffed.
+# ---------------------------------------------------------------------------
+capture_policy:
+  # The capture path creates a Task from an intention the person has expressed.
+  # An instance of a recurring behavior is not created by this path: it is a record of a fact
+  # about the person's behavior, not their intention, and a separate mechanism with rules of its
+  # own generates it.
+  autonomous_create_task:      true    # L0 only, and only from captured input
+  autonomous_update_existing:  false   # changing an existing object always needs approval
+  autonomous_create_above_L0:  false   # Project / Behavior System / Objective / Area of Focus / Identity
+  autonomous_gbrain_fact:      true    # an explicit fact, stated directly by the person
+  autonomous_gbrain_lesson:    false   # a generalization always needs approval
+  ambiguity_action:            keep_in_inbox
+capture_policy_rules:
+  - "`capture_policy` is the person's standing authorization: granted once and limited to the switches listed above."
+  - "`INV-016` Higher Levels and mutations of existing state keep the approval gate regardless of capture_policy. A mutation of existing state is a change to a managed object; consuming an Inbox item just converted within the same authorization is not one."
+  - "Converting an Inbox item is a system intent through the App (`convert_inbox_item`): an L0 Task, an origin comment on the item that mentions the Task, and moving the item to the trash are one intent (`INV-013`, `INV-014`). The order is fixed: Task, comment, trash, because Notion does not accept a comment on a page in the trash."
+  - "The conversion's Task has an open canonical status (`Next Action`, `Scheduled`, `Waiting For`, `Someday/Maybe`), no `Date` for a `Next Action` (`INV-005`), no relation to a Behavior System and no body: the system does not write bodies (`INV-008`)."
+  - "The relations of a new Task to existing objects are not an edit to those objects: Notion adds the reverse side of the relation. Each relation points to a page of the type its property targets, and not to a page in the trash. A Project relation does not point to a closed Project (`Done`, `Canceled`) or to one whose status cannot be read: an open Task does not stay hidden inside a closed one."
+
+# ---------------------------------------------------------------------------
+# Who writes to GBrain and how. Each kind of write names the capability that performs it —
+# App (`mcp_toolsets.app.capabilities`) or GBrain (`mcp_toolsets.gbrain.capabilities`) — and the
+# authority on two surfaces: `run` is an App run, `chat` is a conversation. The authority values:
+#   autonomous    writes on its own when the entry has a source;
+#   person_words  writes only what the person formulated themselves;
+#   with_entry    is created together with a permitted entry, as part of it;
+#   on_request    writes exactly what the person asked for or approved in words;
+#   none          the capability is outside the surface's toolset.
+# `docs/3-policy.md` § “Closure processing and memory policy” owns the semantics of the kinds;
+# this key holds only the list, which tests check: a `run` authority other than `none` is possible
+# exactly when the capability is in at least one row of `mode_toolsets`.
+# ---------------------------------------------------------------------------
+memory_writes:
+  authority:
+    - autonomous
+    - person_words
+    - with_entry
+    - on_request
+    - none
+  kinds:
+    timeline_event:
+      capability: memory_record
+      run: autonomous
+      chat: autonomous
+    fact:
+      capability: memory_record
+      run: person_words
+      chat: person_words
+    decision:
+      capability: memory_record
+      run: person_words
+      chat: person_words
+      # The start of the `summary` of a timeline entry: it tells a decision from an event.
+      marker: "Decision:"
+    # The acceptable state of an Area of Focus (`docs/3-policy.md` § “Degradation register”): the
+    # person's clarifications accumulate as facts on the Area of Focus's anchor, and GBrain
+    # replaces a fact close in meaning with the newer one. The start of a fact: it tells this
+    # fact from the other facts of the anchor.
+    standard:
+      capability: memory_record
+      run: person_words
+      chat: person_words
+      marker: "Standard:"
+    # An anchor derives from a Notion object: the App creates it by convention together with the
+    # first entry about the object, and only at a free address (`INV-098`).
+    anchor:
+      capability: memory_record
+      run: with_entry
+      chat: with_entry
+    compiled_truth:
+      capability: page_write
+      run: none
+      chat: on_request
+    graph_link:
+      capability: graph_write
+      run: none
+      chat: on_request
+    lesson:
+      capability: page_write
+      run: none
+      chat: on_request
+      threshold: lesson
+    cognitive_observation:
+      capability: page_write
+      run: none
+      chat: on_request
+      threshold: cognitive_observation
+  # The types of links between pages that GBrain accepts from `graph_link`: the server rejects any
+  # other type. The Skill lists them for the agent in a conversation where a link is being made.
+  link_verbs: [relates_to, derived_from, supersedes, mentions, sourced_from]
+  rules:
+    - "`autonomous_gbrain_fact` and `autonomous_gbrain_lesson` from `capture_policy` are the same statements expressed as a standing authorization: the first is true if and only if the authority for `fact` in a run is other than `none`, the second if and only if the same holds for `lesson`."
+    - "The system writes an event, a decision, a fact and an Area of Focus's acceptable state with an App intent (`memory_record`) on both surfaces. The model names the Notion object, the kind, the text, the day and the source. The App finds the object's anchor by exact identity, creates it when there is no anchor and the conventional address is free, gives the entry the shape of its kind (the marker, `kind`, `entity`) and skips an identical stored entry. Without a Notion object a decision and a fact are written as a fact with no `entity`; an event and an acceptable state always have an object."
+    - "Before a write, what is stored about the entity is read, and an identical entry is skipped. An entry that contradicts what is stored is written when the person says the new one replaces it: the person is asked which is in force."
+    - "A duplicate anchor (`integrity_error`) or a foreign page at the conventional address makes the intent answer with a refusal: memory stays as it is, and the person learns that what was said could not be remembered."
+    - "Replacing a page (`compiled_truth`, `lesson`) writes back all the content that was read before it and changes only the named area; after the write the page is read again and checked."
+    - "A native GBrain write (`page_write`, `graph_write`) comes from a conversation, at the person's request; the `mode_toolsets` rows give a run read-only access to GBrain."
+
+# ---------------------------------------------------------------------------
+# Generalization thresholds. M10 calibrates them against evals (`docs/3-policy.md`
+# § “Behavior metrics”); until then they are starting values.
+# ---------------------------------------------------------------------------
+memory_thresholds:
+  lesson:
+    min_independent_episodes: 2
+    requires:
+      - applicability_limits
+      - person_confirmation
+  cognitive_observation:
+    min_independent_episodes: 3
+    requires:
+      - alternative_explanations
+      - confidence
+      - conditions
+      - practical_value
+      - person_confirmation
+  rules:
+    - "An episode is an event in an anchor's timeline with a source of its own. Entries from one source are one episode; each new source is a separate episode. A source is the page and thread, or the conversation, that the entry came from."
+    - "When it is unclear whether something is a lesson or an observation about the person, the `cognitive_observation` threshold applies."
+    - "The threshold applies to generalizations that the system formulates. A generalization the person stated themselves is the person's words: it is written as a fact on the anchor, with no threshold."
+    - "A system generalization is written and called a pattern when it is backed by at least as many episodes as the threshold specifies. The system brings up a candidate that has reached the threshold in a Strategic Review, where the person reflects."
+    - "The threshold is a necessary condition; along with it, each requirement from the `requires` list is named in the entry itself."
+
+# ---------------------------------------------------------------------------
+# Discriminated union: the way a canonical semantic is represented in the physical workspace.
+# `kind` is the discriminator; each kind carries its own payload. `absent` is a LEGITIMATE value,
+# not an error: a missing semantic is declared explicitly, not emulated silently.
+#
+# One canonical semantic has exactly one representation. When several properties physically
+# carry it, that is a sign that there are several canonical semantics as well: the field is split
+# instead of the representation growing more complicated.
+# ---------------------------------------------------------------------------
+representation_kinds:
+  discriminator: kind
+
+  # An ordinary Notion property.
+  native:
+    payload:
+      propertyId: string
+
+  # A relation: the target, the direction and the reverse property id. Why the direction matters
+  # for a write: `docs/2-system.md` § “Logical interface of the adapter”.
+  relation:
+    payload:
+      propertyId: string
+      dataSourceId: string
+      twoWay: boolean
+      syncedPropertyId: string | null
+
+  # Reachable only by traversing another relation. `via` is the property of the first step,
+  # `rule` is a closed set of traversals: `through_key_results`, `through_task_instances`.
+  traversed:
+    payload:
+      via: string
+      rule: string
+
+  # Prose in the page body; how the body is read: `docs/2-system.md`
+  # § “Logical interface of the adapter”.
+  page_body:
+    payload: {}
+
+  # Emergent semantics: it accumulates in the object's GBrain anchor in the course of a review
+  # and is not declared in advance.
+  gbrain:
+    payload: {}
+
+  # Has no carrier anywhere.
+  absent:
+    payload:
+      reason: string
+
+# ---------------------------------------------------------------------------
+# Errors of semantic resolution. There is a single criterion for telling them apart: WHO erred.
+#   configuration_error — the binding erred: it names something that does not exist.
+#   schema_gap          — the model erred: the workspace carries what the model does not describe.
+#   ambiguous_input     — no one erred: the input allows several readings.
+#
+# Transport failures (unreachability, 401, a limit) are NOT included here: they are not
+# semantics, and the behavior in those cases is described separately as degradation.
+#
+# A missing capability is NOT an error. `absent` in the binding yields the capability `absent`,
+# and an empty body and an unfilled optional field yield `empty` (`INV-009`). The first is a
+# declared decision, the second is the state of a record; neither is an error.
+# ---------------------------------------------------------------------------
+adapter_errors:
+  discriminator: kind
+
+  # The binding does not match the physical schema: the named id does not exist or belongs to
+  # something else. Neither the model nor the workspace is at fault here: the binding entry between
+  # them has diverged.
+  configuration_error:
+    payload:
+      slot: string          # canonical path, e.g. fields.task.status
+      named: string         # the id the binding named
+    blast_radius: "all records of the type: there is one binding per workspace"
+    resolution: "the person edits `infra/notion/mapping.yaml`"
+    caller: >-
+      Stop working with this type. A retry will not help: nothing changes without an edit to the
+      file. Show the owner the path of the slot.
+
+  # The workspace carries a value that the canonical model does not describe and that is not in
+  # the `known_non_canonical` registry. The binding is correct; the model is incomplete.
+  schema_gap:
+    payload:
+      slot: string
+      value: string         # the physical value the model does not know
+    blast_radius: "records that carry this value"
+    resolution: "extend the canonical model or register the value as non-canonical"
+    caller: >-
+      Assert nothing about this field (`INV-002`) and do not substitute a default (`INV-001`).
+      Keep reading the rest of the record: one unrecognized value does not make the record
+      unreadable.
+
+  # The input allows several canonical readings, and none is preferred.
+  ambiguous_input:
+    payload:
+      slot: string
+      readings: string      # the list of candidates the choice is between
+    blast_radius: "this interaction"
+    resolution: "clarification from the person"
+    caller: >-
+      Ask, do not guess (`INV-007`). This is not a fault: nothing needs fixing; an answer is
+      needed.
+
+adapter_error_rules:
+  - "Every error of semantic resolution belongs to exactly one kind of `adapter_errors`. The kind is chosen according to who erred: the binding, the model or no one."
+  - "An unknown enum value yields `schema_gap`: the binding named the property correctly, the value is simply not in the binding. `configuration_error` arises when the named id itself does not exist."
+  - "An error is not a degradation. A degradation is declared in advance and has a representation; an error means that the resolution did not take place."
+  - "None of the three substitutes a default or silently chooses one of several readings."
+
+# ---------------------------------------------------------------------------
+# Computed properties of the workspace that the system reads as detector evidence.
+#
+# They are NOT canonical fields: one canonical semantic has one carrier, and each signal repeats
+# what the model already expresses differently — `blocked` repeats the dependency relation, a
+# habit's counters repeat its instances. A signal adds no semantics; it saves reads.
+#
+# That is why a decoded record keeps signals apart from the canonical readings: a detector
+# must see that these are computations of the workspace, not claims of the model. If the
+# expression of a formula is changed, the conclusions drawn before the change rested on a
+# different computation.
+#
+# Every signal is optional: it is a shortcut, and in another workspace it may not exist. A
+# missing signal is not a degradation — the model has its own path to the same fact, only a
+# more expensive one.
+#
+# Signals are never written: formulas and rollups are physically read-only, and the permission
+# class `prohibited/out-of-scope writes` says so directly.
+# ---------------------------------------------------------------------------
+signals:
+  task.blocked: "whether an unresolved dependency remains (a blocker that is neither `Done` nor `Canceled`); the dependency relation together with the blockers' statuses carries the same fact. The computation returns nothing exactly when there are no unclosed blockers, so `empty` here is the answer “no”, not a lack of an answer"
+  task.effective_areas_of_focus: "names of the Areas of Focus reachable from the Task through a Project, a habit or a Key Result. Names, not identifiers: no reference is built from them"
+  task.effective_tags: "names of the tags collected from the Task, its Project and its habit"
+  project.blocked: "the mirror of `task.blocked` at the Project level, with the same reading `empty`"
+  project.effective_areas_of_focus: "names of the Areas of Focus reachable from the Project directly or through a Key Result"
+  behavior_system.streak: "the number of consecutive completed instances up to the first failed instance; canceled ones are not counted and do not break the streak"
+  behavior_system.completed_instances: "how many instances have been completed"
+  behavior_system.failed_instances: "how many instances have failed"
+
+signal_rules:
+  - "A signal is read and never written."
+  - "A signal is not a canonical field and does not substitute for one: a detector cites it as a computation of the workspace, not as a claim of the model."
+  - "A missing signal is not a degradation: a canonical path to the same fact exists and remains in force."
+  - "The time since the last recorded attention is not a signal: it is computed from the page's own `last_edited_time`."
+
+representation_rules:
+  - "The adapter declares the representation kind of each canonical semantic as one of the values of `representation_kinds`."
+  - "`INV-001` An unknown status value yields `schema_gap`; an ambiguous date context yields `ambiguous_input`. No default is substituted, and none of the readings is silently chosen. A value is unknown when it belongs neither to the canonical set nor to the known non-canonical register (`known_non_canonical`): the adapter knows a registered non-canonical value and yields no error."
+  - "A nonexistent id in the binding yields `configuration_error`."
+  - "The `page_body` capability is determined when each record is read: an empty body yields `empty` for all semantics of this page. `absent` stays with the representation: it is the binding's declaration that there is no carrier anywhere."
+  - "A native property is created only for a state with a closed set of values on which a detector filters. Prose does not become a native property."
+
+# ---------------------------------------------------------------------------
+# What the system writes to Notion and into which physical types. Where the type comes from and
+# who checks the response: `docs/2-system.md` § “System writes to Notion”.
+# ---------------------------------------------------------------------------
+canonical_writes:
+  # Kind of canonical value → the physical property types that accept it.
+  kinds:
+    text: [title, rich_text]
+    option: [status, select]
+    date: [date]
+    links: [relation]
+  # The physical types that can be cleared. A status is not one of them: Notion returns a cleared
+  # status to its default value, so it never ends up empty. A title is not one of them either: a
+  # page always has a title.
+  clearable: [rich_text, select, date, relation]
+  rules:
+    - "An option is written by its canonical name, which the binding translates into an option id. The system never writes a non-canonical value (`known_non_canonical`)."
+    - "Only a carrier that is a property can be written: `native` or `relation`. Signals, formulas, rollups, timestamps and carriers that are not properties cannot be written."
+    - "A write of several fields does not leave a `Next Action` with a `Date` (`INV-005`) — neither a new Task nor a changed one. A new Task with a date names a status. A refusal gives its reason: the request is invalid in itself (at execution it is `failed`) or only for this page (at execution it is `conflict`: the page changed after the proposal)."
+    - "The field of a property on an existing page is determined by the page's canonical type — the data source it lives in; a property id does not determine the field by itself. A data source belongs to at most one type."
+    - "The physical type is taken from the live schema at the time of the write; the binding carries no types. A write to a type that does not accept the kind of value is refused before the request."
+    - "What was written is checked by reading it back: the Notion response is complete, the response decoded by the adapter equals what was intended, and the author of the Notion response is the integration bot. A response that does not confirm the write is a separate error, not a request failure: the write has already taken place."
+    - "What was read is compared by meaning with what was named: an instant as an instant, relations as a set, a cleared value as emptiness. A date's time zone is an annotation of the instant if `start` itself carries an offset; an instant without an offset cannot be placed in time and is not equal to anything. This is how a state is compared (the `property_reads_as` precondition). The system's own write is confirmed more strictly: there is no time zone in the response, because the system does not write time zones."
+
+# ---------------------------------------------------------------------------
+# Values that exist in the physical Notion schema but do not belong to the domain. The handling
+# contract: they are not mapped to a canonical status, are never written, yield no error or
+# degradation, and are outside the scope of detectors. Do NOT add them to
+# `levels.L0.task_statuses` and do NOT generate a TS variant of the canonical enum from them.
+#
+# The key is the field (`Task Status`), not the object type: an option id belongs to a specific
+# property, and several non-canonical values on one field are told apart by construction.
+# ---------------------------------------------------------------------------
+known_non_canonical:
+  - canonical_type: Task Status
+    value: Hidden
+    decision: D5
+    contract:
+      mapped_to_canonical: false
+      ever_written: false
+      raises_error: false
+      in_detector_scope: false
+
+# ---------------------------------------------------------------------------
+# Discrepancies between sources. The winner is deliberately NOT chosen: these are findings for a
+# human decision, not bugs for automatic fixing. Consumers of this file must NOT silently choose
+# one of the variants.
+# ---------------------------------------------------------------------------
+conflicts: []

@@ -1,0 +1,782 @@
+// The schema of the App's durable state: technical continuity, not a second domain model.
+//
+// Each table here answers the question “how does work survive time and a restart”. By
+// construction they hold no domain state (`INV-017`): none stores a Task, a Project or
+// knowledge, only the identifiers by which fresh state is read again from Notion (`INV-003`).
+//
+// The status enums are not invented here. Each enum matches a lifecycle in
+// `contracts/canonical.yaml`, and any divergence is caught by
+// `app/test/contract/runtime-agreement.spec.ts`.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  // The App compiles to CommonJS, but by default the generator emits ESM with
+  // `import.meta.url`, which is a compile error in CJS. The format is declared explicitly.
+  moduleFormat        = "cjs"
+  // No extension in imports: tsc can handle a `.js` that points at a `.ts`, but the jest
+  // resolver cannot, so otherwise the generated client cannot be imported in tests.
+  importFileExtension = ""
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycles — `contracts/canonical.yaml`
+// ---------------------------------------------------------------------------
+
+/// `contracts/canonical.yaml`, key `webhook_receipt`.
+enum WebhookReceiptStatus {
+  received
+  processed
+  rejected
+  failed
+}
+
+/// `contracts/canonical.yaml`, key `scheduled_check`.
+enum ScheduledCheckStatus {
+  pending
+  running
+  done
+  failed
+}
+
+/// `contracts/canonical.yaml`, key `evaluation_window`.
+enum EvaluationWindowStatus {
+  pending
+  running
+  done
+  failed
+}
+
+/// `contracts/canonical.yaml`, key `review_occurrence`.
+enum ReviewOccurrenceStatus {
+  pending
+  running
+  done
+  failed
+}
+
+/// `contracts/canonical.yaml`, key `notification_delivery`.
+enum NotificationDeliveryStatus {
+  pending
+  sent
+  failed
+}
+
+/// `contracts/canonical.yaml`, key `pending_action`.
+enum PendingActionStatus {
+  proposed
+  approved
+  executed
+  rejected
+  expired
+  conflict
+  failed
+}
+
+/// Why an approved change was not written, as the proposal's trail in the thread tells the
+/// person (ADR 0043): there is no access to the page, Notion did not respond for longer than the
+/// limit (ADR 0044), or Notion did not accept the write.
+enum PendingActionFailure {
+  no_access
+  unavailable
+  other
+}
+
+/// `contracts/canonical.yaml`, key `reason_codes`. A technical reason for a wake, not a
+/// classification of a semantic issue (`INV-019`).
+enum ReasonCode {
+  await_external_event
+  user_snooze
+  safety_recheck
+  deadline_followup
+  resolution_reconciliation
+}
+
+/// `contracts/canonical.yaml`, key `workflow_modes`.
+enum WorkflowMode {
+  dialogue
+  event_evaluation
+  scheduled_recheck
+  closure_processing
+  daily_control
+  weekly_control_review
+  strategic_review
+  deep_review
+}
+
+/// `contracts/canonical.yaml`, key `mcp_toolsets`: the servers that an App-triggered run talks
+/// to.
+enum McpServerName {
+  app
+  notion
+  gbrain
+}
+
+// ---------------------------------------------------------------------------
+// Technical enums of the App: they are not in the contract because they are properties of the
+// implementation
+// ---------------------------------------------------------------------------
+
+/// The source of an incoming event. Together with `external_id` it is the event's unique
+/// identity: the boundary between sources is enforced by a separate column with a closed enum,
+/// so the identifiers of different sources do not overlap.
+enum EventSource {
+  notion
+  telegram
+}
+
+/// What gave rise to the run. The field serves two mechanisms at once, the budget and quiet hours,
+/// because both ask the same thing: whether the person asked for it.
+enum RunOrigin {
+  evaluation_window
+  scheduled_check
+  review_schedule
+  managed_discussion_reply
+  channel_inbound
+  /// A page the person put in the Inbox: the run processes the item (`contracts/canonical.yaml`,
+  /// key `evaluation_window`).
+  inbox_capture
+  /// A launch the operator made by hand — a gate command (ADR 0013). Exempt from the budget, but
+  /// does not carry the person's words.
+  operator
+}
+
+/// Whether a run spends the daily limit. The classifier sets the value once, at the time of the
+/// decision, and it stays in the ledger as a fact, not as a recalculation.
+enum RunBudgetClass {
+  budgeted
+  exempt
+}
+
+enum ExecutionSurface {
+  claude_chat
+  app_triggered
+}
+
+enum RunStatus {
+  running
+  completed
+  failed
+  /// The run did not report before its ticket expired; separate from `failed`
+  /// (`docs/2-system.md` § “Observability and cost”).
+  abandoned
+  /// The run hit the plan quota: an external state, not a failure (ADR 0012).
+  /// Neither the breaker nor the daily limit sees it.
+  deferred
+}
+
+enum Connector {
+  notion_mcp
+  gbrain
+}
+
+/// Who denied a tool call: the SDK perimeter (the run's permissions) or the App MCP
+/// (the capability rules).
+enum PolicyDecisionSource {
+  perimeter
+  app
+}
+
+/// The write classes of the App MCP: as many as there are capabilities that write.
+enum AppliedEffectKind {
+  /// A Task created by the conversion of an Inbox item.
+  page_created
+  /// A system comment in Notion, written to the page's discussion or as a reply in a named one.
+  comment
+  /// An Inbox item moved to the trash by the conversion.
+  page_archived
+  continuation
+  proposal
+  delivery
+  /// A memory anchor that the App created by convention along with the first memory entry about
+  /// an object: the slug of the GBrain page.
+  memory_anchor
+  /// A memory entry: the slug of the GBrain page it landed on, or the id of a fact with no entity.
+  memory_entry
+}
+
+/// The rule by which the sweep found a candidate (`docs/2-system.md`
+/// § “Periodic safety sweep”).
+enum SweepRule {
+  check_date_reached
+  deadline_signal
+  project_path
+  paused_commitment
+  project_closure
+  dependency_contradiction
+}
+
+// ---------------------------------------------------------------------------
+// Records
+// ---------------------------------------------------------------------------
+
+/// Idempotency of incoming events: the pair `(source, externalId)` is unique, and the retention
+/// period is in `docs/2-system.md` § “`webhook_receipts`”.
+model WebhookReceipt {
+  id            String               @id @default(uuid(7))
+  source        EventSource
+  externalId    String               @map("external_id")
+  eventType     String               @map("event_type")
+  entityId      String?              @map("entity_id")
+  pageId        String?              @map("page_id")
+  /// The PROVIDER's attempt number, taken from the event itself. It does not count our attempts.
+  attemptNumber Int?                 @map("attempt_number")
+  /// A projection of the event for diagnostics, not the provider's payload: it deliberately
+  /// holds none of the content the person typed (`docs/2-system.md`
+  /// § “`webhook_receipts`”).
+  diagnostics   Json
+  receivedAt    DateTime             @default(now()) @map("received_at")
+  processedAt   DateTime?            @map("processed_at")
+  status        WebhookReceiptStatus @default(received)
+  /// Why the event was dropped, or what processing failed on. For `rejected` this is the intake
+  /// diagnostics: it distinguishes suppression from the relevance gate.
+  lastError     String?              @map("last_error")
+
+  @@unique([source, externalId])
+  @@index([receivedAt])
+  @@map("webhook_receipts")
+}
+
+/// A continuation of attention over time. The thread is identified by `discussionId`; a thread
+/// has at most one open wake and at most one open closure (the reason class is in
+/// `continuations/reason-class.ts`). Where there is no conversation yet, the pair
+/// `(page, reason_code)` takes the place of the thread. Partial unique indexes from the migration
+/// constrain every case. The lifecycle is in `contracts/canonical.yaml`, key `scheduled_check`.
+model ScheduledCheck {
+  id               String               @id @default(uuid(7))
+  discussionId     String?              @map("discussion_id")
+  notionPageId     String               @map("notion_page_id")
+  runAt            DateTime             @map("run_at")
+  reasonCode       ReasonCode           @map("reason_code")
+  /// The row version: it grows when scheduling moves the row. A closure is checked against it
+  /// (`docs/2-system.md` § “`evaluation_windows`”).
+  version          Int                  @default(0)
+  status           ScheduledCheckStatus @default(pending)
+  attemptCount     Int                  @default(0) @map("attempt_count")
+  /// Who is working on the row at the moment: a lease, not a status (`contracts/canonical.yaml`,
+  /// key `runtime_record_rules`).
+  lockedUntil      DateTime?            @map("locked_until")
+  lastAttemptAt    DateTime?            @map("last_attempt_at")
+  lastError        String?              @map("last_error")
+  /// When the person was told that a wake whose time they named did not take place: a `failed`
+  /// wake of that kind without the mark still awaits its message (`INV-108`).
+  failureNoticedAt DateTime?            @map("failure_noticed_at")
+  /// The time until which the queue does not claim a row whose run did not reach Notion, and the
+  /// time since which the row has been waiting without a break (ADR 0045). Separate from the
+  /// row's time: a denial does not move the row's time (`INV-084`).
+  notionHoldUntil  DateTime?            @map("notion_hold_until")
+  notionHeldSince  DateTime?            @map("notion_held_since")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  @@index([runAt])
+  @@map("scheduled_checks")
+}
+
+/// The evaluation window: debounce over the events of one page. Why it is separate from
+/// `ScheduledCheck`, and why a window that is unique per page is not an attention thread, is in
+/// `docs/2-system.md` § “`evaluation_windows`”.
+model EvaluationWindow {
+  id                String                 @id @default(uuid(7))
+  pageId            String                 @map("page_id")
+  /// Appears when `comment.created` touched the window: the event carries `discussion_id`
+  /// directly, and dropping it would mean forgetting what the reply is to.
+  discussionId      String?                @map("discussion_id")
+  /// The person replied in a discussion the system manages: the window's run is the person's
+  /// reply, not an autonomous evaluation. A merge does not clear the fact
+  /// (`contracts/canonical.yaml`, key `evaluation_window`).
+  personReplied     Boolean                @default(false) @map("person_replied")
+  /// The person put this page in the Inbox: the window's run is the processing of the item.
+  inboxItemCreated  Boolean                @default(false) @map("inbox_item_created")
+  /// The person replied in the channel to a system message: the window's run is their reply, not
+  /// a page change. The text is already written to Notion as the bot's quoting comment in the
+  /// thread (`INV-312`), and the channel consumer itself opened the window: the webhook filters
+  /// out the bot's write.
+  channelInbound    Boolean                @default(false) @map("channel_inbound")
+  /// The union of the changed property IDs across all events of the window, in canonical form:
+  /// the translation is done at ingress, in the event schema.
+  updatedProperties String[]               @map("updated_properties")
+  eventTypes        String[]               @map("event_types")
+  latestEventId     String                 @map("latest_event_id")
+  /// The type of the event that closed the window. Separate from `event_types`, because that set
+  /// is sorted and does not answer the question “which was last”.
+  latestEventType   String                 @map("latest_event_type")
+  /// The time of the window's last event — **its** time, not the time the row was written: the
+  /// trigger envelope declares `trigger.timestamp` to be the time of the event (`INV-030`), and
+  /// the queue row's `updated_at` would tell the model when we wrote, not when it happened.
+  latestEventAt     DateTime               @map("latest_event_at")
+  /// The end of the window. Each subsequent event pushes it back, but not past the ceiling
+  /// measured from `createdAt`: otherwise continuous editing would keep the window open forever.
+  notBefore         DateTime               @map("not_before")
+  /// The row version: it grows with each merge; a closure is checked against it
+  /// (`docs/2-system.md` § “`evaluation_windows`”).
+  version           Int                    @default(0)
+  status            EvaluationWindowStatus @default(pending)
+  attemptCount      Int                    @default(0) @map("attempt_count")
+  lockedUntil       DateTime?              @map("locked_until")
+  lastAttemptAt     DateTime?              @map("last_attempt_at")
+  lastError         String?                @map("last_error")
+  /// The time until which the queue does not claim a row whose run did not reach Notion, and the
+  /// time since which the row has been waiting without a break (ADR 0045). Separate from the
+  /// row's time: a denial does not move the row's time (`INV-084`).
+  notionHoldUntil   DateTime?              @map("notion_hold_until")
+  notionHeldSince   DateTime?              @map("notion_held_since")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  @@index([notBefore])
+  // A partial index on `not_before` among the open rows is added by the migration: Prisma cannot
+  // express partial indexes, yet the selection filters on exactly this predicate, and the index
+  // is what makes it independent of the number of closed windows.
+  @@map("evaluation_windows")
+}
+
+/// The delivery queue: a logical delivery is queued once (`idempotencyKey`) and retried until it
+/// succeeds or reaches the attempt limit (`docs/2-system.md` § “`notification_outbox`”).
+model NotificationOutbox {
+  id               String                     @id @default(uuid(7))
+  idempotencyKey   String                     @unique @map("idempotency_key")
+  discussionId     String?                    @map("discussion_id")
+  channel          String
+  payload          Json
+  /// The message identifier in the channel, as the provider reported it: the person replies to the
+  /// message through it (reply), and the system edits the message through it when a proposal
+  /// closes. Only in `sent` rows.
+  externalId       String?                    @map("external_id")
+  /// The proposals that the message carries, with their fates.
+  proposals        NotificationProposal[]
+  status           NotificationDeliveryStatus @default(pending)
+  attemptCount     Int                        @default(0) @map("attempt_count")
+  /// The row must not be tried before this time; the backoff, the provider's `retry_after` and
+  /// quiet hours are written here (`contracts/canonical.yaml`, key `notification_delivery`).
+  nextAttemptAt    DateTime?                  @map("next_attempt_at")
+  /// Who is trying it at the moment: a lease, not a status (`contracts/canonical.yaml`, key
+  /// `notification_delivery`).
+  lockedUntil      DateTime?                  @map("locked_until")
+  /// Whether the delivery breaks through quiet hours; the delivery service sets it using the
+  /// classifier of the run's origin (`docs/3-policy.md` § “Quiet hours”).
+  quietHoursExempt Boolean                    @default(false) @map("quiet_hours_exempt")
+  sentAt           DateTime?                  @map("sent_at")
+  lastError        String?                    @map("last_error")
+  createdAt        DateTime                   @default(now()) @map("created_at")
+  // A partial index on `created_at` among the `pending` rows is added by the migration: Prisma
+  // cannot express partial indexes, and the selection filters on exactly this predicate.
+
+  @@index([nextAttemptAt])
+  // The person's reply finds the message by `(channel, message id)`.
+  @@index([channel, externalId])
+  @@map("notification_outbox")
+}
+
+/// A proposal in a notification packet: what the message showed the person with buttons and what
+/// the proposal became. The rows are used to find a proposal's message when the proposal is
+/// decided, and to find the proposals a packet showed; a rewritten message is rendered from the
+/// fates (`INV-083`: membership and fates are rows, not JSON).
+model NotificationProposal {
+  outboxId        String               @map("outbox_id")
+  pendingActionId String               @map("pending_action_id")
+  /// The proposal's place in the packet, from zero: the App numbers the lines and buttons from it.
+  position        Int
+  /// What the proposal became; `null` means it still awaits a decision.
+  fate            PendingActionStatus?
+  outbox          NotificationOutbox   @relation(fields: [outboxId], references: [id], onDelete: Cascade)
+  pendingAction   PendingAction        @relation(fields: [pendingActionId], references: [id], onDelete: Cascade)
+
+  @@id([outboxId, pendingActionId])
+  @@unique([outboxId, position])
+  @@index([pendingActionId])
+  @@map("notification_proposals")
+}
+
+/// The executable contract of an autonomous run's proposal: it exists from the time of the
+/// proposal, and the effects with their values are fixed here (`contracts/canonical.yaml`,
+/// key `pending_action`).
+model PendingAction {
+  id                 String                 @id @default(uuid(7))
+  discussionId       String?                @map("discussion_id")
+  /// The run that made the proposal: the proposal's evidence is in its trace
+  /// (`docs/2-system.md` § “`pending_actions`”). Empty when the author is not recorded. No
+  /// foreign key: only `runs/` reads and writes the run trace (`INV-079`), and the run id here
+  /// is an identity, not a relation.
+  proposedByRunId    String?                @map("proposed_by_run_id")
+  /// The fingerprint of the effects, unique among non-terminal statuses by a partial index from
+  /// the migration (`docs/2-system.md` § “`pending_actions`”).
+  fingerprint        String
+  /// What the action will change: the page, the property and the canonical value; every effect
+  /// must have a precondition that will see it (`docs/2-system.md`
+  /// § “Preconditions and executor”).
+  effects            Json
+  preconditions      Json
+  status             PendingActionStatus    @default(proposed)
+  createdAt          DateTime               @default(now()) @map("created_at")
+  resolvedAt         DateTime?              @map("resolved_at")
+  /// Why the action is waiting (`next_attempt_at`) or ended `failed` or `conflict`; `executed`,
+  /// `rejected` and `expired` have no reason (`docs/2-system.md` § “Preconditions and
+  /// executor”).
+  lastError          String?                @map("last_error")
+  /// There is no point trying the action before this time: Notion is unreachable or is
+  /// answering with a rate limit. This is about order, not about once-only execution
+  /// (`docs/2-system.md` § “`pending_actions`”).
+  nextAttemptAt      DateTime?              @map("next_attempt_at")
+  /// The page the action changes: an action acts on one object, so it has one page. The queries
+  /// “is a proposal waiting on this page?” filter by this field.
+  notionPageId       String                 @map("notion_page_id")
+  /// The last fate already published to the thread and the message (ADR 0043, `INV-107`):
+  /// publication waits until the published fate equals `status`.
+  publishedStatus    PendingActionStatus?   @map("published_status")
+  /// When the person approved: the limit on Notion's temporary unavailability is measured from
+  /// it (ADR 0044).
+  approvedAt         DateTime?              @map("approved_at")
+  /// How many times Notion denied access to the page during execution attempts (ADR 0044).
+  accessFailures     Int                    @default(0) @map("access_failures")
+  /// Why the approved change was not written; present only in `failed`.
+  failure            PendingActionFailure?
+  /// The person changed the page where a proposal is waiting: the preconditions need to be
+  /// checked, and a broken one closes the proposal (ADR 0044). Empty means there is nothing to
+  /// check.
+  recheckRequestedAt DateTime?              @map("recheck_requested_at")
+  /// The notification packets that showed the proposal to the person.
+  notifications      NotificationProposal[]
+
+  @@index([status])
+  @@index([notionPageId])
+  @@map("pending_actions")
+}
+
+/// A Notion discussion the system has commented in: intake uses it to recognize the person's
+/// reply to the system (`docs/2-system.md` § “`system_discussions`”). The row contains no comment
+/// text, because the text lives in Notion.
+model SystemDiscussion {
+  /// The canonical form of the thread id, the same form the event uses for it.
+  discussionId   String       @id @map("discussion_id")
+  pageId         String       @map("page_id")
+  /// The mode in which the person's reply is continued. The system's first write in the thread
+  /// sets it: `dialogue` on an Inbox item, otherwise the mode of whoever opened it.
+  mode           WorkflowMode
+  firstWrittenAt DateTime     @default(now()) @map("first_written_at")
+  lastWrittenAt  DateTime     @default(now()) @map("last_written_at")
+  /// The block the thread is attached to, when the system's comment landed on a block; `null`
+  /// means the thread is on the page. Notion returns the unresolved threads of a block only by
+  /// block id.
+  blockId        String?      @map("block_id")
+  /// The system's last comment in the thread: the reconciliation uses it to tell a resolved
+  /// thread from a deleted one.
+  lastCommentId  String?      @map("last_comment_id")
+
+  /// Pruning of old discussions uses this time.
+  @@index([lastWrittenAt])
+  @@map("system_discussions")
+}
+
+/// An occurrence of a scheduled review — one row per period, not per instant
+/// (`docs/2-system.md` § “Schedule and recurrence”, ADR 0036). A review that has not started by
+/// the end of its window is retired instead of catching up.
+model ReviewOccurrence {
+  id               String                 @id @default(uuid(7))
+  /// One of the reviews; the migration's CHECK rejects the other modes.
+  mode             WorkflowMode
+  /// The key of the period in the installation's time zone: `2026-10-14`, `2026-W42`, `2026-10`,
+  /// `2026-Q4`.
+  occurrenceKey    String                 @map("occurrence_key")
+  dueAt            DateTime               @map("due_at")
+  /// The end of the occurrence window: what has not taken place by then is retired.
+  closesAt         DateTime               @map("closes_at")
+  /// The time from which the review looks at changes: the last occurrence held, no further back
+  /// than two periods.
+  sinceAt          DateTime               @map("since_at")
+  status           ReviewOccurrenceStatus @default(pending)
+  attemptCount     Int                    @default(0) @map("attempt_count")
+  /// Who is working on the row at the moment: a lease, not a status (`contracts/canonical.yaml`,
+  /// key `runtime_record_rules`).
+  lockedUntil      DateTime?              @map("locked_until")
+  lastAttemptAt    DateTime?              @map("last_attempt_at")
+  lastError        String?                @map("last_error")
+  /// When the person was told that the occurrence did not take place: a `failed` row without the
+  /// mark still awaits its message (`INV-105`).
+  failureNoticedAt DateTime?              @map("failure_noticed_at")
+  /// The time until which the queue does not claim a row whose run did not reach Notion, and the
+  /// time since which the row has been waiting without a break (ADR 0045). Separate from the
+  /// row's time: a denial does not move the row's time (`INV-084`).
+  notionHoldUntil  DateTime?              @map("notion_hold_until")
+  notionHeldSince  DateTime?              @map("notion_held_since")
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+
+  @@unique([mode, occurrenceKey])
+  @@index([dueAt])
+  @@map("review_occurrences")
+}
+
+/// What the sweep has already woken: a candidate that was woken on the same basis is not woken a
+/// second time (`docs/2-system.md` § “Periodic safety sweep”).
+model SweepMark {
+  pageId    String    @map("page_id")
+  rule      SweepRule
+  /// The hash of the basis, not the basis itself: `app_db` does not store domain values.
+  basisHash String    @map("basis_hash")
+  wokeAt    DateTime  @default(now()) @map("woke_at")
+
+  @@id([pageId, rule, basisHash])
+  /// The daily limit and pruning use this time.
+  @@index([wokeAt])
+  @@map("sweep_marks")
+}
+
+/// What the resolved-thread reconciliation knows about a thread of the registry
+/// (`docs/2-system.md` § “Resolved-thread reconciliation”).
+model DiscussionReconciliation {
+  discussionId       String    @id @map("discussion_id")
+  /// When the reconciliation last saw the thread among the unresolved ones.
+  seenOpenAt         DateTime? @map("seen_open_at")
+  /// When the reconciliation last requested a closure.
+  closureRequestedAt DateTime? @map("closure_requested_at")
+  /// When the reconciliation found the thread deleted.
+  goneAt             DateTime? @map("gone_at")
+  /// When the reconciliation last asked Notion about the thread's anchor: the traversal
+  /// proceeds oldest first.
+  checkedAt          DateTime? @map("checked_at")
+
+  @@map("discussion_reconciliations")
+}
+
+/// The authorization state of the connectors: encrypted technical state, not domain memory
+/// (`docs/2-system.md` § “`connector_credentials`”).
+model ConnectorCredential {
+  connector            Connector @id
+  /// A public client of dynamic client registration: the grant is refreshed on its behalf. Not a
+  /// secret: a public client has no secret.
+  clientId             String?   @map("client_id")
+  accessToken          String    @map("access_token")
+  accessTokenExpiresAt DateTime  @map("access_token_expires_at")
+  refreshToken         String?   @map("refresh_token")
+  scope                String?
+  /// When the person authorized the connector. The provider measures the grant's ceiling from this
+  /// time, so a repeated authorization overwrites it and a refresh does not.
+  obtainedAt           DateTime  @map("obtained_at")
+  /// When the tokens were last issued, by an authorization or a refresh. The provider measures
+  /// the inactivity limit from this time.
+  refreshedAt          DateTime  @map("refreshed_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@map("connector_credentials")
+}
+
+/// An OAuth client registered by dynamic client registration (RFC 7591) to connect Claude to the
+/// App MCP. The client is public — it has no secret — and permits nothing by itself: a token is
+/// issued only after the owner's consent (`docs/2-system.md` § “Authentication boundary”).
+model OauthClient {
+  id           String       @id @default(uuid(7))
+  clientName   String       @map("client_name")
+  /// The addresses the client asks the code to be returned to; each comes from the allowlist
+  /// (`INV-310`).
+  redirectUris String[]     @map("redirect_uris")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  codes        OauthCode[]
+  tokens       OauthToken[]
+
+  @@index([createdAt])
+  @@map("oauth_clients")
+}
+
+/// An authorization code: single-use and short-lived. The database holds only the SHA-256 of the
+/// code.
+model OauthCode {
+  codeHash      String      @id @map("code_hash")
+  clientId      String      @map("client_id")
+  client        OauthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  /// The address the code was returned to: the exchange must supply the same one.
+  redirectUri   String      @map("redirect_uri")
+  /// The PKCE (S256) challenge: what the exchange must prove with the verifier.
+  codeChallenge String      @map("code_challenge")
+  /// The resource the code was issued for: the token will take it as its audience (`INV-310`).
+  resource      String
+  expiresAt     DateTime    @map("expires_at")
+  /// The code is single-use: the exchange sets this time with one conditional update.
+  redeemedAt    DateTime?   @map("redeemed_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@index([expiresAt])
+  @@map("oauth_codes")
+}
+
+/// The pair of tokens that Claude Chat uses to talk to the App MCP. The database holds only
+/// SHA-256 digests: the token is not stored in the clear (`INV-310`).
+model OauthToken {
+  id               String      @id @default(uuid(7))
+  /// The rotation family: the refresh token is rotated, and an old one, presented a second time,
+  /// means theft and revokes the whole family.
+  familyId         String      @map("family_id")
+  clientId         String      @map("client_id")
+  client           OauthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  /// The token's audience: the address of the App MCP it is issued for.
+  resource         String
+  accessHash       String      @unique @map("access_hash")
+  accessExpiresAt  DateTime    @map("access_expires_at")
+  refreshHash      String      @unique @map("refresh_hash")
+  refreshExpiresAt DateTime    @map("refresh_expires_at")
+  /// The refresh token of this pair has been used, and the next pair has been issued in its place.
+  rotatedAt        DateTime?   @map("rotated_at")
+  revokedAt        DateTime?   @map("revoked_at")
+  createdAt        DateTime    @default(now()) @map("created_at")
+
+  @@index([familyId])
+  @@index([refreshExpiresAt])
+  @@map("oauth_tokens")
+}
+
+/// The run ledger: one row for every LAUNCHED run.
+///
+/// A budget denial creates no row, because it is not a run. All the limits are read from here:
+/// the plan quota (the latest `deferred_until` that is still in the future), the daily limit (how
+/// many `budgeted` runs in a day, excluding deferred ones), the circuit breaker (how many
+/// consecutive failures) and concurrency — the ticket slot, not a count of `running`
+/// (`docs/2-system.md` § “Observability and cost”). So the ledger holds only what admission and
+/// the verdict need; the rest of the trace is in the snapshot and the lists.
+///
+/// `originKind`, `originId`, `status`, `budgetClass`, `slot`, `expiresAt`, `deferredUntil` and
+/// the timestamps are the bookkeeping of the table itself, not trace fields. Which trace fields
+/// exist and which are required is in `contracts/canonical.yaml`, key `run_trace_fields`; the
+/// rules between the trace tables are enforced by a constraint trigger from the migration, which
+/// Prisma does not describe.
+model RunTrace {
+  id                String             @id @default(uuid(7))
+  mode              WorkflowMode
+  executionSurface  ExecutionSurface   @map("execution_surface")
+  trigger           Json
+  /// The page the run is about, taken from its trigger envelope; a review has no page. Runs about
+  /// a page are looked up by it: the envelope in `trigger` is read only as a whole (`INV-083`).
+  pageId            String?            @map("page_id")
+  originKind        RunOrigin          @map("origin_kind")
+  originId          String?            @map("origin_id")
+  status            RunStatus          @default(running)
+  /// The execution ticket: a partial unique index on it among `running` rows makes admission
+  /// atomic (`docs/2-system.md` § “Observability and cost”).
+  slot              Int
+  /// The ticket expiry: a run that has not reported by then falls back to `abandoned`, and the
+  /// slot is released on its own.
+  expiresAt         DateTime           @map("expires_at")
+  budgetClass       RunBudgetClass     @map("budget_class")
+  latencyMs         Int?               @map("latency_ms")
+  /// Why the run failed, was deferred or was abandoned: one reason per run. A `running` or
+  /// `completed` run has none.
+  reason            String?
+  /// The time until which no new runs start: the plan quota (ADR 0012).
+  deferredUntil     DateTime?          @map("deferred_until")
+  /// The run ended because Notion was unavailable: deferred or, for the person's snooze, failed
+  /// (ADR 0045). The breaker does not count runs that ended this way.
+  notionUnavailable Boolean            @default(false) @map("notion_unavailable")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  finishedAt        DateTime?          @map("finished_at")
+  snapshot          RunSnapshot?
+  appliedEffects    RunAppliedEffect[]
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([pageId, createdAt])
+  @@map("run_traces")
+}
+
+/// A run snapshot: what the run received at its start, what it said about itself in the result
+/// message, and the result that passed the schema. It is written together with the conclusion,
+/// at most one per ledger row, and only if the run has anything to record: a run that failed
+/// before init has no snapshot.
+///
+/// Each part comes from its own point in the run (`contracts/canonical.yaml`, key
+/// `run_trace_fields`, field `required_when`). The report of the result message is written
+/// whole, and there is no snapshot without any part. The CHECK constraints of the migration
+/// enforce this.
+model RunSnapshot {
+  /// The `id` of the ledger row, which is also the run's `session_id`.
+  runId           String              @id @map("run_id")
+  run             RunTrace            @relation(fields: [runId], references: [id], onDelete: Cascade)
+  /// What the run received at its start: the CLI version, the plugins with their versions, the
+  /// servers with their statuses, the set of tools.
+  init            Json?
+  /// The profile's model in canonical form from `modelUsage`, if it really worked; otherwise
+  /// `none`: the CLI's auxiliary model is not the run's model (`INV-033`).
+  model           String?
+  numTurns        Int?                @map("num_turns")
+  /// The duration the run itself reports. The ledger's `latency_ms` is the App's clock around the
+  /// call. Both make up the `latency` field of the trace.
+  durationMs      Int?                @map("duration_ms")
+  /// How the run's loop ended, according to the CLI. A failure is reported by this field and by
+  /// `is_error`, not by `subtype` (`docs/2-system.md` § “Run result”). It may also be absent from
+  /// the result.
+  terminalReason  String?             @map("terminal_reason")
+  /// The result that passed the App's schema.
+  result          Json?
+  toolCalls       RunToolCall[]
+  policyDecisions RunPolicyDecision[]
+  modelUsage      RunModelUsage[]
+
+  @@map("run_snapshots")
+}
+
+/// A tool call in a run, in call order, from init. There are no payloads (GAP-07).
+model RunToolCall {
+  runId    String         @map("run_id")
+  snapshot RunSnapshot    @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  /// The place of the call in the run, from zero.
+  position Int
+  /// The MCP server. None means a tool of the harness itself.
+  server   McpServerName?
+  tool     String
+  ok       Boolean
+
+  @@id([runId, position])
+  @@map("run_tool_calls")
+}
+
+/// A denial of a tool call, either by the SDK perimeter (taken from the result message) or by
+/// the App MCP (with a reason). Perimeter denials first, then the App's, each in its own order.
+model RunPolicyDecision {
+  runId    String               @map("run_id")
+  snapshot RunSnapshot          @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  position Int
+  source   PolicyDecisionSource
+  /// The tool as named by whoever denied it: the perimeter by the full SDK name, the App by the
+  /// name of its own tool.
+  tool     String
+  /// Why the App denied it. The perimeter does not report a reason.
+  reason   String?
+
+  @@id([runId, position])
+  @@map("run_policy_decisions")
+}
+
+/// The tokens of one model of the run, as the result message reports them (`modelUsage`).
+model RunModelUsage {
+  runId                    String      @map("run_id")
+  snapshot                 RunSnapshot @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  /// The `modelUsage` key: the model name as the CLI named it.
+  model                    String
+  canonicalModel           String?     @map("canonical_model")
+  inputTokens              Int         @map("input_tokens")
+  outputTokens             Int         @map("output_tokens")
+  cacheReadInputTokens     Int         @map("cache_read_input_tokens")
+  cacheCreationInputTokens Int         @map("cache_creation_input_tokens")
+
+  @@id([runId, model])
+  @@map("run_model_usage")
+}
+
+/// An App effect applied when the run is concluded (ADR 0014), in order of application. Not a
+/// report of the run but what the App did with its writes, so it belongs to the ledger row, not
+/// the snapshot.
+model RunAppliedEffect {
+  runId    String            @map("run_id")
+  run      RunTrace          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  position Int
+  kind     AppliedEffectKind
+  /// The row the effect created or touched, in the table of its capability, or the Notion object
+  /// if the effect is a system write to Notion. No foreign key: this is an identity, not a
+  /// relation (`docs/2-system.md` § “Implementation inventory”).
+  recordId String            @map("record_id")
+
+  @@id([runId, position])
+  @@map("run_applied_effects")
+}

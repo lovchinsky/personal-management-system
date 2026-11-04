@@ -1,0 +1,1366 @@
+# Personal Management System invariant registry
+#
+# Purpose: one permanent ID per invariant, plus the binding that says how each one
+# is checked. Section numbers move when documents are reorganized; INV-xxx never does.
+# This file is the only place IDs are assigned.
+#
+# Per entry
+#   statement       the invariant, in English
+#   origin          the live section that states it normatively
+#   verifiable_by   what a check needs:
+#                     ci-contract  no model and no service beyond the App's own database
+#                     eval         a model, over a replay dataset
+#                     integration  services beyond the App's own database (GBrain, Notion,
+#                                  a delivery provider) or a real workspace
+#                     manual       human judgment
+#   test            where the check lives: an existing file that names this ID, or the
+#                   planned place of a check not yet written, named after this ID
+#                   (`inv-NNN.*`). `null` exactly for `manual` entries and restatements
+#                   (`same_as`). The path follows `verifiable_by`: ci-contract — a
+#                   contract or unit spec, or `app/test/integration/` when the check
+#                   needs the database; eval — `app/test/eval/*.eval.ts`; integration —
+#                   `app/test/integration/`.
+#                   Read `verifiable_by: ci-contract` as "checkable without a model",
+#                   never as "checked".
+#   related         other entries that constrain the same thing
+#   same_as         this entry restates that one; the test lives on the other ID
+#   mvp20_ordinal   INV-2NN only: NN, the criterion's number — the NN of SCEN-20-NN
+#
+# `app/test/contract/registry.spec.ts` holds these rules and prints the census —
+# entries per lane and how many have an existing check — in its title.
+#
+# ID bands — a band is a range of IDs, and an ID never moves between bands
+#   INV-001..INV-041  domain and adapter rules, and the core runtime, runner and Skill rules
+#   INV-042..INV-109  component boundaries, interfaces, deployment and App mechanisms
+#   INV-201..INV-221  release criteria. These carry no `origin`: no document states
+#                     them, so this registry owns their wording. INV-2NN is the NNth
+#                     criterion, which is what lets SCEN-20-NN map to it with no
+#                     lookup table. Four restate a core entry — see `same_as`.
+#   INV-301..INV-315  App-triggered runner, Skill layer, the Chat path and the channel reply
+#
+# WARNING (ordinal binding): INV-2NN, SCEN-20-NN and `mvp20_ordinal: NN` name one
+# criterion. A new criterion takes the next free NN; an existing one keeps its NN even
+# if the release criteria are reordered — the number is an identity, not a position.
+# Never renumber.
+
+summary:
+  # Counts per lane: `app/test/contract/registry.spec.ts` prints them from the entries below.
+
+  open_contradictions: []
+
+invariants:
+
+# ---------------------------------------------------------------------------
+# INV-001..INV-041 — domain and adapter rules, and the core runtime, runner and Skill rules
+# ---------------------------------------------------------------------------
+
+  - id: INV-001
+    statement: "An unknown status value yields `schema_gap`; an ambiguous date context yields `ambiguous_input`. No default is substituted, and none of the readings is silently chosen. A value is unknown when it belongs neither to the canonical set nor to the known non-canonical register. An empty page body yields no error — it is the capability `empty` under `INV-009`."
+    origin:
+      - docs/3-policy.md § Handling absent semantics
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-001.spec.ts
+    related: [INV-009, INV-041]
+    notes: "Two disjoint sets, so INV-041 is not an exception to this rule: the adapter recognises a value either as canonical or as registered non-canonical, and only a value in neither set raises. `knownNonCanonical` in the adapter interface is that register. Testable as three cases: canonical value maps, registered non-canonical value maps to nothing and raises nothing, anything else raises."
+
+  - id: INV-002
+    statement: "The capability set is available to the model through the App MCP. A detector does not assert semantics whose representation is `absent`."
+    origin:
+      - docs/3-policy.md § Handling absent semantics
+    verifiable_by: eval
+    test: app/test/eval/inv-002.eval.ts
+    notes: "Split verification: clause 1 (capability set reachable via `get_schema_mapping`) is ci-contract; clause 2 (“A detector does not assert semantics whose representation is `absent`”) is a property of model output and needs a model run. Classified by the weakest clause."
+
+  - id: INV-003
+    statement: "The adapter is access configuration. Current property values are always read from Notion and are not cached as domain state."
+    origin:
+      - docs/2-system.md § Physical schema and semantic interpretation
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-003.spec.ts
+    related: [INV-052, INV-077]
+    notes: "Assertable as: adapter config holds IDs only, no property-value cache; app_db has no property-value table. The named test proves the first half: every page read goes to Notion, and there is no cache. The second half (the database has no column that would hold a property value) is checked by `app/test/integration/schema-shape.spec.ts` against the live database."
+
+  - id: INV-004
+    statement: "`Date` and `Deadline` are independent: each is read from its own property, and a Task can carry both. The status determines what `Date` means, not which field is filled in."
+    origin:
+      - docs/2-system.md § `Date` and `Deadline`
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-004.spec.ts
+    related: [INV-005]
+    notes: "The independence of the fields is the core of ADR 0010: a `Scheduled` Task carries its own `Deadline`. The table that interprets `Date` by status lives in `docs/2-system.md` § “`Date` and `Deadline`”."
+
+  - id: INV-005
+    statement: "After a write, a Task does not have the status `Next Action` and a `Date` at the same time: both writing a date to a `Next Action` Task and moving a Task that has a date into `Next Action` are rejected (a move together with clearing the date is allowed). `Deadline` does not depend on the status."
+    origin:
+      - docs/2-system.md § `Date` and `Deadline`
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-005.spec.ts
+    related: [INV-004]
+    notes: "Meaning depends on the status/`Date` interpretation table in `docs/2-system.md` § “`Date` and `Deadline`”. The check judges the result of the write: the status and `Date` the request names, and for the half it does not name, what the page already holds. A write that names neither status nor `Date` is not checked, so a page the person left with a `Date` on `Next Action` stays writable for other fields. A move into `Next Action` with the `Date` cleared in the same write passes. Refusal splits by cause: both halves in the request mean the request is wrong for any page (execution `failed`); one half on the page means it is wrong for this page only (execution `conflict`)."
+
+  - id: INV-006
+    statement: "The presence of a `Deadline` does not change the status. A `Next Action` with a `Deadline` remains `Next Action`."
+    origin:
+      - docs/2-system.md § `Date` and `Deadline`
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-006.spec.ts
+    related: [INV-206]
+    notes: "INV-206 “Execution model” states the same rule more broadly (“time fields do not replace the status”); kept separate because INV-206 bundles two further claims."
+
+  - id: INV-007
+    statement: "When the input is ambiguous (is “Friday” the `Date` or the `Deadline`?), the model clarifies instead of guessing."
+    origin:
+      - docs/2-system.md § `Date` and `Deadline`
+    verifiable_by: eval
+    test: app/test/eval/inv-007.eval.ts
+    notes: "Explicitly about model behavior — “the model clarifies instead of guessing”. No model-free test exists: it sits in the `eval` lane, which `npm test` does not gate (GAP-18)."
+
+  - id: INV-008
+    statement: "The App does not write to the page body — neither the parser nor system writes do. The person changes the body, on their own or through Claude in the chat."
+    origin:
+      - docs/2-system.md § Page body
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-008.spec.ts
+    related: [INV-034, INV-086]
+    notes: "Assertable over the one write boundary (INV-086 keeps every other write path out): `NotionWriter` calls no block endpoint and sends none of the body fields a page request accepts — `children`, `content`, `markdown`, `erase_content`. The chat half (“through Claude in the chat”) is the Chat-path enforcement gap that `docs/2-system.md` § “mode → toolset” concedes: held by Skill instruction plus post-hoc trace review, not by a gate."
+
+  - id: INV-009
+    statement: "An empty page body → capability `empty` for all prose semantics of this record: the carrier exists and holds nothing. This is not `absent`: the absence of a carrier is declared by the binding, and that absence is a property of the type, not of the record. An enum value that belongs neither to the canonical set nor to the known non-canonical register → `schema_gap`."
+    origin:
+      - docs/2-system.md § Page body
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-009.spec.ts
+    related: [INV-001, INV-041]
+    notes: "Scoped like INV-001: the register of known non-canonical values sits alongside the canonical set, and only a value in neither raises. Prose semantics share one carrier — the page body is read whole, so capability is determined per record, not per field."
+
+  - id: INV-010
+    statement: "An Inbox item has no status property and no processed flag. There is no third state."
+    origin:
+      - docs/3-policy.md § Resolvability model
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-010.spec.ts
+    notes: "Assertable against the Inbox model in code. Conformance of the live Notion Inbox data source to this shape is integration-only (see INV-077)."
+
+  - id: INV-011
+    statement: "There is a single cycle. Clarify is not repeated over what is already resolved."
+    origin:
+      - docs/3-policy.md § Resolvability model
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-011.spec.ts
+
+  - id: INV-012
+    statement: "Capture does not depend on the availability of the model."
+    origin:
+      - docs/3-policy.md § Where the item appears
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-012.spec.ts
+
+  - id: INV-013
+    statement: "Moving the source item to the trash does not need a separate approval: “this becomes X” and the removal of the source are one intent."
+    origin:
+      - docs/3-policy.md § Flow
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-013.spec.ts
+    related: [INV-016, INV-211]
+    notes: "Scoped to the move to the trash that closes a conversion: removing the source is the second half of the write it was authorized with, not a second act. A standalone move to the trash or deletion stays approval-required. Testable as: the approval-gate list carries that exclusion, so the trashing after a conversion resolves to no separate gate."
+
+  - id: INV-014
+    statement: "A trashed Inbox item keeps its comment as an origin trail. No separate notification about an autonomous conversion is sent."
+    origin:
+      - docs/3-policy.md § Flow
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-014.spec.ts
+
+  - id: INV-015
+    statement: "A proposal made in the chat and left unanswered in the same turn exists as an Inbox item with a comment. `pending_actions` is not used for it: it needs no executable contract, because returning to it will again be a conversation in which Claude itself writes."
+    origin:
+      - docs/2-system.md § Approval differs by who performs the write
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-015.spec.ts
+    related: [INV-026]
+    notes: "The contract test proves the second clause: the approvals capability refuses a proposal whose context is the chat, so `pending_actions` never holds one. The first clause — the proposal lives on as an Inbox item with a comment — is carried by the chat step `park_inbox_item` (capability `capture_park`), proven in `app/src/capture/capture.service.spec.ts` (a page in the Inbox database, then the comment on it); `app/src/mcp/server/chat-session.spec.ts` proves the chat applies it at once; `INV-313` proves that a chat has no tool to propose."
+
+  - id: INV-016
+    statement: "Higher Levels and mutations of existing state keep the approval gate regardless of capture_policy. A mutation of existing state is a change to a managed object; consuming an Inbox item just converted within the same authorization is not one."
+    origin:
+      - docs/3-policy.md § Standing authorization `capture_policy`
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-016.spec.ts
+    related: [INV-211, INV-213]
+
+  - id: INV-017
+    statement: "`app_db` has no domain tables."
+    origin:
+      - docs/2-system.md § Forbidden tables
+    verifiable_by: ci-contract
+    test: app/test/integration/schema-shape.spec.ts
+    related: [INV-052, INV-203]
+    notes: "The concrete, enumerated form of INV-052. Kept separate: the banned-table list is narrower than «parallel operational/semantic model», so merging would silently narrow the broader invariant."
+
+  - id: INV-018
+    statement: "A person's change is not suppressed: only an event whose authors are all the integration bot is the system's own write."
+    origin:
+      - docs/2-system.md § Webhook intake
+    verifiable_by: ci-contract
+    test: app/test/integration/scen-19-35.spec.ts
+    related: [INV-087]
+
+  - id: INV-019
+    statement: "`reason_code` uses the `reason_codes` vocabulary and does not classify a semantic issue."
+    origin:
+      - docs/2-system.md § Scheduler and outbox
+    verifiable_by: ci-contract
+    test: app/test/contract/runtime-agreement.spec.ts
+
+  - id: INV-020
+    statement: "Under `mode: scheduled_recheck` — and, for a thread the App has found resolved, under `mode: closure_processing` — a continuation passes only `type`, `event_id` (the continuation row and its version), `discussion_id?`, `page_id` and `reason_code`. Semantic state does not reach the prompt; the model reads the state again."
+    origin:
+      - docs/2-system.md § Scheduler and outbox
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-030.spec.ts
+    related: [INV-030, INV-095]
+    notes: "Envelope shape is ci-contract. The trailing clause “the model reads the state again” is eval-only; the contract test covers the envelope, not the re-read."
+
+  - id: INV-021
+    statement: "Buttons derive from proposals: for a channel that supports them (`interactiveActions: true`), the sender adds “approve” and “reject” to each proposal, and for a channel without them, none; in both cases the packet carries the proposal lines, the question and the link."
+    origin:
+      - docs/2-system.md § Notification channel port
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-021.spec.ts
+    related: [INV-221]
+
+  - id: INV-022
+    statement: "An update that fails either of the two checks is discarded with no durable effect and no reply to the source chat."
+    origin:
+      - docs/2-system.md § Telegram — channel adapter
+    verifiable_by: ci-contract
+    test: app/src/intake/channel/telegram/telegram-secret.guard.spec.ts
+    notes: "The guard spec proves the two checks. That the guard is attached to the route at all is proven through the real app in `app/test/app.e2e-spec.ts`: an update without the secret, or from a foreign chat, gets 401 (not 404), leaves no receipt and calls no Bot API method."
+
+  - id: INV-023
+    statement: "`answerCallbackQuery` is called immediately after intake — **after the decision is recorded and before it is executed**. Executing the approval does not block the ack."
+    origin:
+      - docs/2-system.md § Telegram — channel adapter
+    verifiable_by: ci-contract
+    test: app/src/intake/channel/telegram/telegram-webhook.controller.spec.ts
+    notes: "Ci-contract against a fake Telegram transport. Ordering against the real Bot API is integration. The ci-contract check covers only the ordering: recording before the ack. Editing the message to show the result is not part of the statement: it is covered by `app/src/delivery/delivery.service.spec.ts` and the queue's integration lane (the `external_id` of the delivery row)."
+
+  - id: INV-024
+    statement: "A channel message is not a source of state. The full content lives in Notion; the message contains a link."
+    origin:
+      - docs/2-system.md § Telegram — channel adapter
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-024.spec.ts
+    related: [INV-221]
+
+  - id: INV-025
+    statement: "The App MCP provides the system with a closed list of intents in canonical terms: a comment, conversion of an Inbox item, closing an Inbox item, execution of an approved change and a memory write; through these and only these the system writes to Notion and GBrain on its own behalf."
+    origin:
+      - docs/2-system.md § Preconditions and executor
+    verifiable_by: manual
+    test: null
+    related: [INV-028, INV-055, INV-056, INV-058, INV-220]
+    notes: "INV-220 states the same rule as a release criterion; the INV-2xx band owns that wording. Classified manual, not ci-contract: whether a NEW App MCP tool duplicates a native domain operation is a design-review judgement. The enumerable part is INV-028, which is ci-contract. The voice picks the interface (ADR 0017, ADR 0035): the system's comment and its memory entry through App are intents of the system, not facades over the person's operations — the closed list is `mcp_toolsets.app.system_voice` plus the executor of an approved change. Parking a statement of the person in Inbox and carrying the person's channel reply into a thread are bot writes outside the list: they decide nothing about existing state, they only move the person's words into Notion."
+
+  - id: INV-026
+    statement: "`pending_actions` holds the proposal of an autonomous run from the time it is made: the run ends together with the model, and the row is the only carrier of the executable change until the person replies. The table is not an attention surface: the person sees a pending proposal in Notion. A proposal from the chat stays an Inbox item (`INV-015`)."
+    origin:
+      - docs/2-system.md § Approval differs by who performs the write
+    verifiable_by: ci-contract
+    test: app/test/integration/scen-19-44.spec.ts
+    related: [INV-015, INV-057]
+    notes: >-
+      The ci-contract check covers the first clause: the row exists from the time the
+      proposal is made, and its effects are frozen. “A proposal from the chat
+      does not become a row” is proven by `app/test/contract/inv-015.spec.ts`.
+      The rest is not the named test's subject: that test makes no calls to
+      Notion, so “The table is not an attention surface” and “A proposal from the
+      chat stays an Inbox item” are proven by `app/src/mcp/server/chat-session.spec.ts`
+      (the item is parked at once) and `INV-313` (the chat has no proposal tool).
+
+  - id: INV-027
+    statement: "A conflict returns `conflict`; the model makes a new proposal and does not repeat the old one."
+    origin:
+      - docs/2-system.md § Preconditions and executor
+    verifiable_by: eval
+    test: app/test/eval/inv-027.eval.ts
+    related: [INV-211]
+    notes: "Returning `conflict` is ci-contract; “the model makes a new proposal and does not repeat the old one” needs a model. Classified by the weakest clause."
+
+  - id: INV-028
+    statement: "The App MCP contains none of the names `create_task`, `update_project`, `notion_raw_request`, `write_gbrain_fact`, `append_gbrain_timeline`, `gbrain_raw_request`, `sql_query` or their equivalents."
+    origin:
+      - docs/2-system.md § App MCP
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-028.spec.ts
+    related: [INV-025, INV-056]
+    notes: "The named list is mechanically assertable. “or their equivalents” is not — that tail is covered by INV-025 (manual). Gate M3 requires it green (criterion 5). `record_memory` is not an equivalent of `write_gbrain_fact` or `append_gbrain_timeline`: it takes canonical terms — the Notion object, the kind of entry, the words, the source — and the App finds the anchor, creates it by convention and shapes the entry; the model names no page, field or GBrain operation (ADR 0035)."
+
+  - id: INV-029
+    statement: "The App MCP does not launch Claude recursively."
+    origin:
+      - docs/2-system.md § App MCP
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-029.spec.ts
+
+  - id: INV-030
+    statement: "The trigger envelope and App MCP responses are narrow JSON. `app_db` rows, retry bookkeeping and the database schema do not reach the prompt: a `get_*` response carries the lifecycle status and domain times, but not queue bookkeeping."
+    origin:
+      - docs/2-system.md § Run invocation
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-030.spec.ts
+    related: [INV-020]
+
+  - id: INV-031
+    statement: "`model` and `effort` are set explicitly in the options of every run and are not left on the CLI default: the default drifts with the version of the SDK package, so a run that relies on it changes behavior together with a package upgrade."
+    origin:
+      - docs/2-system.md § `RunProfile`
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-031.spec.ts
+    notes: "Assertable over the options builder, with no model and no live run: every run's options carry an explicit `model` and `effort`. Which canonical model the alias then resolves to is a fact about the run and is asserted from the trace — INV-033."
+
+  - id: INV-032
+    statement: "There is no fallback to another model. When the model is unavailable, the run fails with no partial effects and is retried with the same profile. This rule is about the model; lowering `effort` to a supported level is an SDK resolution on a different axis and does not fall under it."
+    origin:
+      - docs/2-system.md § `RunProfile`
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-032.spec.ts
+    notes: "“The same profile” means the same per-run options: `model` plus `effort` (`low`…`max`) and the tool budgets — the retry reuses that object as is and substitutes no model. The two are separate fields in `RunProfile` rather than one “depth” setting exactly because they resolve differently: the model axis has no fallback, while the SDK resolves an `effort` the active model does not support down to the highest level at or below it. A contract test that read effort resolution as a forbidden fallback would fail on every run where model and requested level disagree, so the test asserts the model axis only."
+
+  - id: INV-033
+    statement: "The `modelUsage` of every run is asserted in the trace: the profile's model is present with the same `canonicalModel` and did the main work. Auxiliary CLI entries (a smaller model for utility calls) are not a fallback."
+    origin:
+      - docs/2-system.md § `RunProfile`
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-033.spec.ts
+    related: [INV-031]
+    notes: "Assertable over trace fixtures: a terminal run whose trace lacks the field, or carries a canonical model other than the profile's, fails the check. Setting `model` explicitly in the first place is INV-031."
+
+  - id: INV-034
+    statement: "On detector-driven paths the Notion MCP only reads: the allow-sets of the modes on these paths list no Notion write tool, so `permissionMode: 'dontAsk'` denies them; `disallowedTools` removes them from Claude's view as a second layer. The system writes the comment through the App, and a material domain write goes through `pending_actions`."
+    origin:
+      - docs/2-system.md § mode → toolset
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-034.spec.ts
+    related: [INV-008, INV-049, INV-211]
+    notes: "Per-mode toolset resolution is assertable against the options object and against the session `init` message, which enumerates the tools actually attached — the two must agree. The enforcement-boundary table in `docs/2-system.md` § “mode → toolset” states outright that the Chat path is NOT mechanically enforced: it is a user-authorized session the App does not configure, so this contract test does not cover it. The capture path of App-triggered `dialogue` is covered: it reads Notion like every other row and converts Inbox items through App."
+
+  - id: INV-035
+    statement: "The SDK validates the evaluation result through `outputFormat: { type: 'json_schema' }`, and the App validates it once more with its own schema; a run without a valid `structured_output` is a failure, and the failure is reported by `is_error` and `terminal_reason`, not by `subtype`. An invalid or missing structured output leaves no App effects: this run's App MCP writes are not applied, the failure goes to the trace, and the retry stays within the attempts of the origin row."
+    origin:
+      - docs/2-system.md § Result validation
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-035.spec.ts
+    related: [INV-210, INV-212]
+    notes: "The schema is emitted from the zod result model at draft-07 (`z.toJSONSchema(s, { target: 'draft-7' })`) because the SDK rejects newer drafts — the canonical result shape (`contracts/canonical.yaml`, key `evaluation_result`) has to stay expressible there. The CLI does not enforce `format` keywords, hence the App's own zod pass. The schema holds content as well as shape (ADR 0033): `type` is one of `detector_labels`, `evidence` and `counterevidence_checked` are non-empty with non-empty items, `outcome` is snake_case. The CLI enforces `enum`, `minItems` and `pattern` and answers a violation with a tool error the model corrects inside the run; exhausted retries fail the run. The SDK answers an unauthenticated run and an unavailable model with `subtype: success` and `is_error: true`, so the contract test covers it explicitly. App effects are staged and applied only after a valid result (ADR 0014); the system writes Notion and GBrain memory only through the App, so those writes wait for the same verdict (INV-088, ADR 0035)."
+
+  - id: INV-036
+    statement: "Every `evidence` ref matches an object read by a tool call in the same run."
+    origin:
+      - docs/2-system.md § Result validation
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-036.spec.ts
+    related: [INV-210]
+    notes: "The validator is unit-testable over trace fixtures (ci-contract). Whether real runs satisfy it is an eval metric, not a CI gate."
+
+  - id: INV-037
+    statement: "Every Skill entry contains only what its situation needs: the run entry holds the files of its `mode`, the Chat entry holds the files of the conversation situation. The rest is progressive disclosure, and the volume that a situation loads on its first read is limited."
+    origin:
+      - docs/2-system.md § Decomposition
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-037.spec.ts
+    related: [INV-209, INV-315]
+    notes: "Mechanical in two parts: the router of the run entry names exactly the frames of `run_frames` and a file for each, and the files a situation reads first stay under its ceiling. Whether every sentence in them is needed stays an editorial judgement. Context is the Skill file tree in `docs/2-system.md` § “Decomposition”."
+
+  - id: INV-038
+    statement: "The Skill operates on canonical semantics; physical names come from `get_schema_mapping`."
+    origin:
+      - docs/2-system.md § Decomposition
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-038.spec.ts
+    related: [INV-202, INV-077]
+    notes: "Assertable in two parts: a static scan of the Skill source for physical data source / property / option IDs; and the wire of `get_schema_mapping` over a live schema that holds every bound property, which names every property id and labels every option."
+
+  - id: INV-039
+    statement: "`detectors.md` is a single multi-label ontology."
+    origin:
+      - docs/2-system.md § Decomposition
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-039.spec.ts
+    related: [INV-043]
+
+  - id: INV-040
+    statement: "The Skill makes no external network calls. On the App-triggered path a mechanism backs this up: built-in tools are disabled, and `WebFetch`/`WebSearch`/`Bash` are in `disallowedTools`."
+    origin:
+      - docs/2-system.md § Decomposition
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-040.spec.ts
+    related: [INV-049]
+    notes: "Two layers, both assertable: a static scan of the Skill source for network calls, and the run options, which leave the session no built-in tool that could reach the network — the only external surface left is the three MCP servers (INV-049)."
+
+# ---------------------------------------------------------------------------
+# INV-041 — decision D5 (ADR 0005)
+# ---------------------------------------------------------------------------
+
+  - id: INV-041
+    statement: "`Task Status = Hidden` is a technical status outside the domain. It is registered as known non-canonical: it is not mapped, raises no error, is outside the scope of detectors and is never written."
+    origin:
+      - docs/2-system.md § Physical schema and semantic interpretation
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-041.spec.ts
+    related: [INV-001, INV-009]
+    notes: "The rule of decision D5 (ADR 0005). The binding's `known_non_canonical` option set (app/src/notion/binding, read by `SemanticAdapter`) is the register it names, and INV-001/INV-009 raise only on values outside both that register and the canonical set — so a registered value not raising is the rule working, not an exception to it."
+
+# ---------------------------------------------------------------------------
+# INV-042..INV-109 — component boundaries, interfaces, deployment and App mechanisms
+# ---------------------------------------------------------------------------
+
+  - id: INV-042
+    statement: "Claude is the central cognitive runtime and the only AI subject; the Plugin is its behavior/tool package, not a separate agent."
+    origin:
+      - docs/2-system.md § Claude — central cognitive runtime
+    verifiable_by: manual
+    test: null
+    related: [INV-043, INV-039]
+    notes: "An architectural stance about what Claude and the Plugin *are*. Its mechanical shadow (no sub-agent definitions in the plugin bundle) is covered by INV-043."
+
+  - id: INV-043
+    statement: "The core Personal Management System Plugin uses Skills and three MCP connectors and does not depend on commands, hooks or sub-agents."
+    origin:
+      - docs/2-system.md § Core component selection
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-043.spec.ts
+    notes: "Assertable against the chat plugin and the installation template: `plugin/` carries its Skill entry and three connectors in `.mcp.json`, and no manifest, commands, hooks or agents; `infra/marketplace.example.json` declares the pinned source and the App and GBrain connectors. App and GBrain addresses belong to the installation and stay outside this repository: `.mcp.json` takes them from `APP_MCP_URL` and `GBRAIN_MCP_URL`, and the installation's marketplace entry replaces those servers by name. The runner plugin declares no connectors: the App passes the three MCP servers in its own options (INV-048, INV-049)."
+
+  - id: INV-044
+    statement: "Plugin stateless."
+    origin:
+      - docs/2-system.md § Personal Management System Plugin — canonical AI solution package
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-044.spec.ts
+    notes: "Assertable as a static property of the bundle (no state files, no persistence calls in Skill source). A behavioural reading of «stateless» would be manual."
+
+  - id: INV-045
+    statement: "Claude Chat history is not durable Personal Management System state."
+    origin:
+      - docs/2-system.md § Claude Chat history is not durable state
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-045.spec.ts
+    related: [INV-218]
+    notes: "Only the App-side proxy is assertable (no chat-transcript table, no code path that reads chat history as state). The positive obligation that follows from it — closing a chat must not erase a taken obligation — is INV-218 and is integration."
+
+  - id: INV-046
+    statement: "Future-relevant outcomes are externalized to Notion, the App or GBrain according to ownership."
+    origin:
+      - docs/2-system.md § Claude Chat history is not durable state
+    verifiable_by: eval
+    test: app/test/eval/inv-046.eval.ts
+    related: [INV-050, INV-051, INV-052, INV-203]
+    notes: "Whether a run actually externalises a future-relevant outcome is a property of model behaviour."
+
+  - id: INV-047
+    statement: "Direct Claude Chat and direct Notion edits are both first-class user ingress paths."
+    origin:
+      - docs/2-system.md § General system model
+    verifiable_by: eval
+    test: app/test/eval/inv-047.eval.ts
+    related: [INV-217]
+    notes: "Restated by INV-217. Parity of the two paths is measured, not asserted: `path-parity rate` is the metric precisely because the Chat path cannot be mechanically constrained — `docs/3-policy.md` § “Behavior metrics”."
+
+  - id: INV-048
+    statement: "Every execution surface has its own plugin, while the domain knowledge lives in one place: the chat plugin is installed from the `plugin/` directory at a pinned commit, and the App image assembles the runner plugin from the runner's entry and the same knowledge and attaches it as `plugins: [{ type: 'local', path, skipMcpDiscovery: true }]`."
+    origin:
+      - docs/2-system.md § Decomposition
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-048.spec.ts
+    related: [INV-219]
+    notes: "Release criterion INV-219 «Behavior parity» restates it in the criterion's own wording. Assertable over the Dockerfile and the repository: the image copies the chat plugin's knowledge into the runner plugin, and the repository keeps no second copy. Both plugins come from one commit: the image is built from it, and the installation's marketplace entry pins its `sha`; the release order in the RUNBOOK (the image first, then the `sha`) keeps the chat from running ahead of the server."
+
+  - id: INV-049
+    statement: "An App-triggered run receives exactly three MCP domains — App, Notion, GBrain — and no built-in tool except `Read` in the plugin directory (`contracts/canonical.yaml`, key `plugin_tools`). The perimeter is set by the pair `allowedTools` + `permissionMode: 'dontAsk'`: a call not covered by an allow rule reaches the `canUseTool` step, which is skipped under `dontAsk`, and is denied. `tools` leaves only `Read`, `disallowedTools` lists the remaining built-in tools by name as a second layer, and `strictMcpConfig: true` with `settingSources: []` keeps ambient configuration out of the run."
+    origin:
+      - docs/2-system.md § Tool surface boundaries
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-049.spec.ts
+    related: [INV-034, INV-040, INV-043]
+    notes: "Assertable against the options object and against the session `init` message, which lists the tools and MCP servers actually attached — a tool present in `init` but outside the three `mcp__*` prefixes, the declared harness tools (`StructuredOutput`) and `Read` fails the check. A tool of Notion or GBrain that the contract does not know is the one exception: the runner denies it and repeats the start once (`ADR 0031`), while a known tool outside the allow-set still fails. The shape of each allow entry is INV-307; per-mode narrowing inside those three domains is INV-034."
+
+  - id: INV-050
+    statement: "Notion is authoritative for current operational state."
+    origin:
+      - docs/2-system.md § Management and operational state — Notion
+    verifiable_by: manual
+    test: null
+    related: [INV-051, INV-052, INV-203]
+    notes: "INV-203 “Data ownership” states this, INV-051 and INV-052 in one sentence, and adds “Durable attention interaction lives in discussions” — a sub-claim of Notion ownership. “Authoritative” is an ownership judgment; the assertable negative (no parallel store) is INV-017/INV-052."
+
+  - id: INV-051
+    statement: "GBrain is authoritative for long-term semantic memory."
+    origin:
+      - docs/2-system.md § Long-term knowledge — GBrain
+    verifiable_by: manual
+    test: null
+    related: [INV-050, INV-052, INV-203, INV-213]
+
+  - id: INV-052
+    statement: "`app_db` stores durable technical/runtime state, not a parallel operational/semantic model."
+    origin:
+      - docs/2-system.md § Runtime continuity — App and `app_db`
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-052.spec.ts
+    related: [INV-017, INV-003, INV-203]
+    notes: "INV-017 is its enumerated form. Kept separate because this statement is broader than the banned-table list."
+
+  - id: INV-053
+    statement: "The Notion MCP is the person's voice: native writes through it are made in the steps where the person speaks. An App run reads Notion through the Notion MCP and writes to it only through the App."
+    origin:
+      - docs/2-system.md § Notion MCP — operational domain interface
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-053.spec.ts
+    related: [INV-025, INV-220]
+    notes: "Assertable from toolset resolution: no App-triggered row names a Notion write tool; the system's comment and Inbox conversion are App tools."
+
+  - id: INV-054
+    statement: "The GBrain MCP is the native model-controlled semantic-memory interface, including native writes when policy allows them."
+    origin:
+      - docs/2-system.md § Knowledge contract GBrain
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-054.spec.ts
+    related: [INV-025, INV-220]
+
+  - id: INV-055
+    statement: "The App MCP exposes runtime/control capabilities and a closed list of the system's intents in Notion and GBrain; the native Notion MCP and GBrain MCP perform the person's operations on Notion and GBrain."
+    origin:
+      - docs/2-system.md § App MCP — runtime/control interface
+    verifiable_by: manual
+    test: null
+    related: [INV-025, INV-028]
+    notes: "Whether a proposed tool repeats an operation the person makes through Notion or GBrain MCP is a judgement made at design time. The enumerated prohibition is INV-028."
+
+  - id: INV-056
+    statement: "The App MCP never exposes raw SQL."
+    origin:
+      - docs/2-system.md § App MCP — perimeter
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-056.spec.ts
+    related: [INV-028]
+    notes: "INV-028 bans the name `sql_query`; this bans the capability. Both are assertable over the tool registry and its schemas."
+
+  - id: INV-057
+    statement: "An approval-required durable action of an autonomous run is stored in the App as an immutable contract: the effects — page, property and canonical value — and the preconditions. The effects are locked when the proposal is made and are not recomputed at approval."
+    origin:
+      - docs/2-system.md § Approval-required writes
+    verifiable_by: ci-contract
+    test: app/test/integration/scen-19-44.spec.ts
+    related: [INV-026, INV-058]
+
+  - id: INV-058
+    statement: "The executor of approved actions writes the approved change as a system write through `NotionWriter` — exactly the values the person saw — not through the App's own domain operation."
+    origin:
+      - docs/2-system.md § Approval-required writes
+    verifiable_by: ci-contract
+    test: app/test/integration/scen-19-44.spec.ts
+    related: [INV-025, INV-057]
+
+  - id: INV-059
+    statement: "The App can use Notion REST for deterministic host-controlled operations without creating a second Notion data authority."
+    origin:
+      - docs/2-system.md § System writes to Notion
+    verifiable_by: manual
+    test: null
+    related: [INV-050, INV-060]
+    notes: "The REST call sites are enumerable in code (ci-assertable); “without creating a second Notion data authority” is the operative clause and is a design judgment."
+
+  - id: INV-060
+    statement: "Notion MCP OAuth for App-triggered runs is separate from the deterministic Notion REST integration credential."
+    origin:
+      - docs/2-system.md § Integration contract Notion
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-060.spec.ts
+    notes: "Assertable over the configuration contract: two distinct credential sources, no shared variable."
+
+  - id: INV-061
+    statement: "App-triggered Notion MCP OAuth supports Authorization Code + PKCE, refresh handling and secure credential storage."
+    origin:
+      - docs/2-system.md § Integration contract Notion
+    verifiable_by: integration
+    test: app/test/integration/inv-061.spec.ts
+    notes: "PKCE construction and token storage are unit-testable; proving the flow and refresh actually work requires live Notion OAuth."
+
+  - id: INV-062
+    statement: "In App-triggered runs, the GBrain MCP uses an App-owned `client_credentials` client with `read write` and no `admin`."
+    origin:
+      - docs/2-system.md § Integration contract GBrain
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-062.spec.ts
+    notes: "Requested scopes are assertable from config. The scopes actually granted by GBrain are integration."
+
+  - id: INV-063
+    statement: "Direct Claude Chat and other external GBrain clients use credentials independent of the App GBrain client."
+    origin:
+      - docs/2-system.md § Integration contract GBrain
+    verifiable_by: manual
+    test: null
+    related: [INV-062]
+    notes: "The external clients are configured outside this repository, so nothing in CI can observe a violation."
+
+  - id: INV-064
+    statement: "GBrain remains independently reachable through an authenticated public MCP."
+    origin:
+      - docs/2-system.md § GBrain — long-term semantic memory
+    verifiable_by: integration
+    test: app/test/integration/inv-064.spec.ts
+
+  - id: INV-065
+    statement: "The App MCP and the GBrain MCP are public HTTPS remote MCP endpoints behind Caddy."
+    origin:
+      - docs/2-system.md § General system model
+      - docs/2-system.md § Public surface
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-065.spec.ts
+    notes: "Assertable against the checked-in Caddy configuration (both routes, TLS). Actual reachability of the deployed endpoints is integration (INV-064 covers GBrain)."
+
+  - id: INV-066
+    statement: "The core App-triggered MCP integration depends on tool calls, not on MCP prompts/resources."
+    origin:
+      - docs/2-system.md § Claude remote MCP
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-066.spec.ts
+
+  - id: INV-067
+    statement: "PostgreSQL remains private in Docker networking."
+    origin:
+      - docs/2-system.md § PostgreSQL
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-067.spec.ts
+    notes: "Assertable against the compose file: no published port for the postgres service."
+
+  - id: INV-068
+    statement: "SQL credentials database-scoped: App -> `app_db`, GBrain -> `gbrain_db`."
+    origin:
+      - docs/2-system.md § PostgreSQL — persistence boundaries
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-068.spec.ts
+
+  - id: INV-069
+    statement: "GBrain user knowledge is restored from `gbrain-repo` after `gbrain_db` is lost."
+    origin:
+      - docs/2-system.md § Long-term knowledge — GBrain
+    verifiable_by: integration
+    test: app/test/integration/inv-069.spec.ts
+    related: [INV-076]
+    notes: "Only a real restore drill proves it; SCEN-64-32 carries “A restore drill has been performed” as a checklist item, not a CI test."
+
+  - id: INV-070
+    statement: "A change of embedding model/dimension is made only through an explicit migration procedure."
+    origin:
+      - docs/2-system.md § Runtime baseline GBrain
+    verifiable_by: manual
+    test: null
+    notes: "A process invariant about how a change is made, not a property of any state. A guard test can detect that the dimension changed, but not that a procedure was followed."
+
+  - id: INV-071
+    statement: "Changing the FTS language requires a reindex and retrieval validation."
+    origin:
+      - docs/2-system.md § Runtime baseline GBrain
+    verifiable_by: manual
+    test: null
+    related: [INV-070]
+    notes: "Process invariant, same reason as INV-070. The retrieval validation itself would be an integration run."
+
+  - id: INV-072
+    statement: "Local and production keep the same logical topology; hosted-Claude local integration uses public HTTPS development endpoints for the App MCP and the GBrain MCP."
+    origin:
+      - docs/2-system.md § General system model
+    verifiable_by: manual
+    test: null
+    notes: "“The same logical topology” spans two environments, only one of which is described in the repository; judging sameness is human review."
+
+  - id: INV-073
+    statement: "The Personal Management System source is a monorepo with the root directories `app/`, `plugin/`, `contracts/`, `docs/`, `infra/`."
+    origin:
+      - docs/2-system.md § VPS repository layout
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-073.spec.ts
+    notes: "The same tree is cloned to the VPS; the App workload runs from the App image — built from the tree or pulled from a registry — not from `/srv/personal-management-system/app`."
+
+  - id: INV-074
+    statement: "Docker Compose, Caddy, infrastructure env files, DB bootstrap and infrastructure wrappers live under `infra/`, not in the repository root."
+    origin:
+      - docs/2-system.md § Local repository layout
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-074.spec.ts
+
+  - id: INV-075
+    statement: "The App Docker build context is the repository root, not `app/`: the image takes the runner plugin from `app/` and the knowledge from `plugin/`, so a narrower context puts the behavior contract out of the build's reach."
+    origin:
+      - docs/2-system.md § Local repository layout
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-075.spec.ts
+
+  - id: INV-076
+    statement: "`gbrain-repo` remains a separate repository: a local sibling of `personal-management-system`, `/srv/gbrain-repo` in production."
+    origin:
+      - docs/2-system.md § Local repository layout
+    verifiable_by: manual
+    test: null
+    related: [INV-069]
+    notes: "Half of it (gbrain-repo is not a subdirectory here) is assertable; the local-sibling and production-path placement are facts about machines, not about this repository."
+
+  - id: INV-077
+    statement: "`contracts/notion-workspace.yaml` defines the physical schema; the methodology and the MVP are authoritative for semantic interpretation, and the binding records the installation's mapping without implicitly changing either of these contracts."
+    origin:
+      - docs/2-system.md § Physical schema and semantic interpretation
+    verifiable_by: integration
+    test: app/test/integration/inv-077.spec.ts
+    related: [INV-003, INV-038, INV-202]
+    notes: "Proving the adapter mapping still matches the physical workspace is a schema-drift check against live Notion. The semantic half (“the methodology and the MVP are authoritative for semantic interpretation”) is manual."
+
+  - id: INV-078
+    statement: "`platform/` imports no App module except the generated Prisma client: modules depend on it, not the other way around."
+    origin:
+      - docs/2-system.md § Module map
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-078.spec.ts
+    notes: "Imports are resolved with the App's own tsconfig, so `baseUrl`-rooted specifiers count as App code rather than packages. Specs under `platform/` are not scanned: the boundary is about code that ships in the image."
+
+  - id: INV-079
+    statement: "The run trace — the `run_traces` ledger, the snapshot and the lists — is read and written only by `runs/`: the runner hands the run's outcome over through a port, and the dispatcher writes it into the trace."
+    origin:
+      - docs/2-system.md § Implementation inventory
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-079.spec.ts
+    related: [INV-304]
+    notes: "The trace is every model whose name starts with `Run` in `app/prisma/schema.prisma`, read together with its `@@map` table; the list is checked against the generated client, so a trace table added later is covered without editing the check. Any path to those tables outside `app/src/runs/` counts: a Prisma delegate (`runTrace`, `runSnapshot`, … — including element access and destructuring), SQL literals naming a table in any case, or the ledger repository by name. Inside `runs/` the ledger may not be re-exported at all, so no alias can carry it out. The syntax tree is walked, so comments that mention the tables do not count."
+
+  - id: INV-080
+    statement: "Capability modules — continuation, delivery, approval, attention, conversion — export a service and at most one run source: the queue and the store stay inside, so every entry into a capability passes its checks."
+    origin:
+      - docs/2-system.md § Implementation inventory
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-080.spec.ts
+    related: [INV-079, INV-084]
+    notes: "Read from Nest module metadata, not from source text: whatever the module lists in `exports` is what other modules can inject. Every export must be a `*Service`, except at most one `*RunSource`: a source of runs enqueues nothing — it hands rows that are already due to the scheduler, disposes of them after the run and prunes the concluded ones for maintenance. Nothing else is exported."
+
+  - id: INV-081
+    statement: "Only `notion/binding/` and `notion/semantics/` read the binding, and only `notion/client/property-id.ts` translates the shape of a property ID: the rest of the App sees canonical IDs and the description of the semantics, not the file format or the shape on the wire. `notion/workspace/` knows the format of the binding file in order to write it; the running App does not load this directory."
+    origin:
+      - docs/2-system.md § Implementation inventory
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-081.spec.ts
+    related: [INV-078, INV-080]
+    notes: "Imports are resolved with the TypeScript resolver: outside the two owners only Nest module files under `notion/binding/` may be imported (DI wiring hands out no binding). `notion/workspace/` is the third place that imports the binding format, because it writes the file; the check also proves that no shipped file outside that folder imports it, so the running App never reaches it — only the `notion` command, whose entry point lives in the folder, and the gate do. Any appearance of `decodeURIComponent` or `decodeURI` counts — a direct call, a function reference passed to `.transform(...)` or `.map(...)`, or `globalThis.decodeURIComponent` — found by walking the syntax tree, so a comment that names them does not count."
+
+  - id: INV-082
+    statement: "Queue leases — `locked_until` — are written and compared only in `platform/queue/`: the owner fence, the lease release and the transition timestamp are implemented there once, not in every disposition of every queue."
+    origin:
+      - docs/2-system.md § Implementation inventory
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-082.spec.ts
+    related: [INV-078, INV-212]
+    notes: "Outside `app/src/platform/queue/` no shipped file may name the lease: the Prisma field `lockedUntil` as an identifier (access, object literal, destructuring, type), or `locked_until` / `lockedUntil` inside a string or template literal in any case (SQL, `Pick<…, 'lockedUntil'>`, element access). The syntax tree is walked, so comments do not count. The check proves where the lease lives, not that every write to a queue row goes through that place: a new disposition that never names the lease — a status update by id alone, through Prisma or raw SQL — passes it unfenced. What exists is held by `app/test/integration/queue-protocol.spec.ts` (including caller predicates with `OR`, which the platform parenthesises), by `app/test/integration/run-row-source.spec.ts` — a zombie test per run-row disposition over the description of every run queue — and by the zombie tests of the delivery queue; in each, a stale token must change nothing. A disposition added later needs its own zombie test."
+
+  - id: INV-083
+    statement: "A JSON column in `app_db` is only a document: a value whose shape the App does not define, or a nested structure that its single reader consumes whole. A set of same-type records that the App or its metrics count, filter or join consists of table rows. The documents are listed in `contracts/canonical.yaml`, key `json_documents`."
+    origin:
+      - docs/2-system.md § Implementation inventory
+    verifiable_by: ci-contract
+    test: app/test/integration/inv-083.spec.ts
+    related: [INV-017, INV-079]
+    notes: "Held in two parts. Read from the applied database, not from `schema.prisma`: every `json`/`jsonb` column (arrays included) must be listed in `json_documents`, and every listed one must exist. And the shipped App source reads a document only whole: no Postgres path or containment operator on a column (`->`, `->>`, `#>`, `@>`, `<@`, `?`) and no Prisma JSON filter (`array_contains`, `string_contains` and their kin) — a set App filters or joins is rows of a table. Migrations moving data and specs are outside the scan. Whether a listed column is truly a document stays a judgement made when it is listed — the check makes the judgement explicit and reviewable, it cannot make it for you."
+
+  - id: INV-084
+    statement: "A run denial does not change the origin row — neither its time, nor its attempt counter, nor its status. A row that the denial finds claimed is released in the state in which it was taken."
+    origin:
+      - docs/2-system.md § Scheduler and outbox
+    verifiable_by: ci-contract
+    test: app/test/integration/inv-084.spec.ts
+    related: [INV-080, INV-082, INV-085, INV-212]
+    notes: "Needs the database, so it lives in the integration lane. Every gate is closed in turn — runner absent, runner not ready, plan quota, breaker, daily limit, slot taken — and a scheduler tick must leave each due row of both run sources byte-for-byte as it was apart from `updated_at`: `run_at` / `not_before`, `attempt_count`, `status`, `last_error`, no lease. The race case is held separately: a row claimed and then denied by admission comes back with the same moment, attempts and status, and no lease."
+
+  - id: INV-085
+    statement: "The scheduler takes due origins in the order of `run_priority`: the class, then fresh before retried, then the earlier time. The `autonomous` class is exactly the budgeted origins of `run_budget`."
+    origin:
+      - docs/2-system.md § Run priority
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-085.spec.ts
+    related: [INV-084, INV-304]
+    notes: "Two halves, no database. The classification in code is compared with the contract (`contracts/canonical.yaml`, key `run_priority`) — class order, members, delegating and unscheduled origins — and every scheduled provenance (each non-delegating, scheduled origin; each `reason_code` under the delegating one) must land in the autonomous class exactly when `run_budget` calls it budgeted. The ordering itself is asserted over the comparator the scheduler sorts with: class first, then fresh before retried, then the earlier time."
+
+  - id: INV-086
+    statement: "Only `NotionWriter` calls the Notion write endpoints (comment, page creation and update, trash); it is one boundary that receives values already encoded by the adapter and checks the author of the response. Only `notion/workspace/` writes the schema — databases and data sources — and the running App does not load it (`INV-081`)."
+    origin:
+      - docs/2-system.md § System writes to Notion
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-086.spec.ts
+    related: [INV-008, INV-059, INV-060]
+    notes: "The syntax tree of every shipped file outside `app/src/notion/client/notion.writer.ts` is walked for a call to a writing method of the Notion client — `pages.create`, `pages.update`, `pages.move`, `comments.create`, `blocks.*` except the reads, `dataSources.create/update`, `databases.create/update`, `fileUploads.*` — whatever the receiver is called. Reads (`retrieve`, `list`, `query`, `users.me`) stay free. A raw `fetch` to `api.notion.com` counts as a write path too. The one exception is `app/src/notion/workspace/`, which writes the schema — `dataSources.update`, `databases.create`, `databases.update` and nothing else; the check walks that folder separately, so a page write there fails it. The folder is reached by the `notion` command, whose entry point lives in it, and by the gate, never by the running App (INV-081)."
+
+  - id: INV-087
+    statement: "Intake classifies an event by its authors: when all authors are the integration bot with its id, the event is the system's own write; anything else is a person's change. While the bot's identity is unknown, classification refuses and the provider redelivers."
+    origin:
+      - docs/2-system.md § Webhook intake
+    verifiable_by: ci-contract
+    test: app/test/integration/inv-087.spec.ts
+    related: [INV-018, INV-086]
+    notes: "Needs the database: the receipt lifecycle is the observable. A matrix of author sets is pushed through intake — only our bot; our bot and a person; a person; a foreign bot; a bot without id; no authors at all — and only the first is rejected as own. With the identity unknown the receipt ends `failed` (the provider retries) and no window is opened."
+
+  - id: INV-088
+    statement: "An App run does not write to Notion before a valid result: it makes system writes to Notion only through the App, and they are applied together with the other App effects."
+    origin:
+      - docs/2-system.md § App MCP
+    verifiable_by: ci-contract
+    test: app/test/integration/inv-088.spec.ts
+    related: [INV-035, INV-053, INV-086]
+
+  - id: INV-089
+    statement: "The system manages a discussion if it has commented in it or if a continuation or proposal is open on it; a person's reply in a managed discussion is a `managed_discussion_reply` run, and a comment outside a managed discussion is an ordinary page change."
+    origin:
+      - docs/2-system.md § System-managed attention episodes
+    verifiable_by: ci-contract
+    test: app/test/integration/inv-089.spec.ts
+    related: [INV-085, INV-087]
+
+  - id: INV-090
+    statement: "App MCP tools have closed input schemas: a field the schema does not recognize gets a refusal, not silence."
+    origin:
+      - docs/2-system.md § App MCP
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-090.spec.ts
+    related: [INV-303]
+
+  - id: INV-091
+    statement: "The rules of a run row — recording an attempt, refunding it, the attempt limit — live only in `runs/` and `platform/queue/`: outside them there is neither SQL that writes `attempt_count` or `last_attempt_at` nor a read of the limit `work_row_max_attempts`. The run queue provides a description and does not repeat the rules."
+    origin:
+      - docs/2-system.md § Scheduler and outbox
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-091.spec.ts
+    related: [INV-080, INV-082, INV-084]
+    notes: "The syntax tree of every shipped file outside `app/src/runs/` and `app/src/platform/queue/` is walked: a string or template literal naming `attempt_count` or `last_attempt_at` in any case counts, and so does the identifier or string `workRowMaxAttempts`. Comments do not count. The Prisma field `attemptCount` read as a value is not a rule and is allowed — the delivery queue computes its backoff from it."
+
+  - id: INV-092
+    statement: "Only App MCP tools and a capability's wire module (`*.wire.ts`) see the wire shape of App MCP input: outside them no parameter has a wire type. A capability service accepts the domain shape from a tool and from any other caller alike."
+    origin:
+      - docs/2-system.md § App MCP
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-092.spec.ts
+    related: [INV-080, INV-090]
+    notes: "The syntax tree of every shipped file outside `app/src/mcp/server/` and `*.wire.ts` is walked: a parameter of a function, method, constructor or arrow whose type names an identifier ending in `Wire` counts, also inside a union, an array or a type argument. A return type or an interface field does not: the capability hands back its view of the answer itself."
+
+  - id: INV-093
+    statement: "Settings arrive typed, from the config namespace of the owning module: nobody imports `ConfigService` in App code, and only the config namespace factories (`*.config.ts`) and the entry point `app.module.ts` read the environment."
+    origin:
+      - docs/2-system.md § Configuration contract App
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-093.spec.ts
+    related: [INV-060, INV-078, INV-080]
+    notes: "The syntax tree of every shipped file under `app/src/` (generated code excluded) is walked: an import specifier naming `ConfigService` counts anywhere, and `process.env` or `process['env']` counts outside `*.config.ts` factories, and `app.module.ts` (it decides whether to read `.env` from `NODE_ENV` before any namespace exists). Comments do not count. The gate is a test, not App code: `app/test/gate/gate-boot.ts` sets the environment of its own App instance before importing it, and its static imports never reach `app.module.ts`."
+
+  - id: INV-094
+    statement: "The rules of the methodology are pure functions over the records that were read: `methodology/` has no Nest providers and does not access Notion, `app_db`, the network, the clock or randomness. It imports only the types of the read record and itself, and for an unread, absent or unknown field it answers `undetermined` instead of guessing."
+    origin:
+      - docs/2-system.md § Module map
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-094.spec.ts
+    related: [INV-002, INV-003, INV-055, INV-081]
+    notes: "The syntax tree of every shipped file under `app/src/methodology/` is walked: a package, a Node module or a file outside the module and the three semantics type files (`reading`, `decoded-record`, `canonical-status`) counts, a value import from those three counts (only `import type` is allowed), and so do a Nest decorator and a network, process-environment, clock or randomness call. The «undetermined» half is held by a matrix of reading states (`app/test/fixtures/reading-matrix.ts`, run by `app/src/methodology/reading-states.spec.ts`): every rule over every field it reads, in each of `absent`, `unread`, `gap`, `non_canonical` and `empty`, with the answer written out literally. `empty` is «nothing there» (an empty link is `none`, a project without tasks is `settled`), not `undetermined`; `non_canonical` (`Hidden`) is deliberately `out_of_scope`, outside the model. A rule added to the layer without a matrix row, or a matrix row naming no rule, fails the test. «Nothing is left» (`settled`, `clear`, `none`) is only as fresh as the read: a project's `Tasks` link is the other side of a synced relation, and the answer is complete only when every task of it was read. The layer is stateless selection over canonical readings, never a model of its own: what the sweep, the gate and the evals ask of it they ask of fresh reads (INV-003)."
+
+  - id: INV-095
+    statement: "Only the App names the wake reason `resolution_reconciliation`, through `requestClosure`: no step that requests a continuation — run or chat — names it, and the wire schema does not offer it. A row with this reason wakes `closure_processing`, not a recheck."
+    origin:
+      - docs/2-system.md § Resolution
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-095.spec.ts
+    related: [INV-019, INV-020, INV-089]
+    notes: "Three clauses are held: `ContinuationsService` refuses the reason for every actor kind (both `check` and `schedule`); the wire schema of `schedule_continuation` does not list it; the row's envelope carries mode `closure_processing`. `requestClosure` is the only way to set it, and it only inserts: the closure has its own slot beside the thread's wake-up, so it never moves an existing row and a second request while it is open changes nothing."
+
+  - id: INV-096
+    statement: "The `closure_processing` mode writes only memory, through an App intent (`memory_record`): it reads Notion and GBrain, and the rest of its App tools are reads."
+    origin:
+      - docs/2-system.md § mode → toolset
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-096.spec.ts
+    related: [INV-055, INV-095]
+    notes: "Held from the contract's own tool names, not from a copy of the row: the Notion and GBrain bundles are `read` only; the one system-voice tool of the row is `record_memory`, and every other tool behind its App bundles is a `get_`/`list_` read. «Only a decision the person made, a fact they stated or a significant event, with its source» is held by the frame and gate M7, not by a tool list."
+
+  - id: INV-097
+    statement: "A canonical anchor is a GBrain page that follows the `gbrain_anchor_shape` convention: the slug `<type prefix>/<notion_id without hyphens>`, frontmatter with exactly `type` (one of `gbrain_anchor_types`), `title`, `notion_id` in the hyphenated canonical form and `aliases`, and in the body an identity line with the same id. Building a page from a description and parsing a page into a description are mutually inverse."
+    origin:
+      - docs/2-system.md § Canonical anchors
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-097.spec.ts
+    related: [INV-098, INV-099]
+    notes: "Held by the pure builder and parser in `app/src/knowledge/`: a page the builder produces parses back to the same description with no violations, and the parser names each way a page falls short (a missing or undashed `notion_id`, an `id` key, a type that does not match the slug prefix, a body without the identity line). The code constants (prefixes, forbidden keys, the identity-line label) are compared with `gbrain_anchor_shape`. That GBrain really indexes the identity line, and indexes nothing of the frontmatter, is a fact of the pinned GBrain: the gate M7 preflight measures it against the live stack, so a GBrain upgrade that changes it fails there."
+
+  - id: INV-098
+    statement: "An anchor's exact identity has three states: `absent`, `exact` and `integrity_error`. The candidates are pages of the anchor types that the search by id in the hyphenated form marked as an exact match, and the page at the object's conventional address, if there is one (search lags behind a write); a candidate becomes the anchor when `frontmatter.notion_id` matches the id in the canonical form. Two pages whose `notion_id` matches the id in the canonical form yield `integrity_error`, and the memory intent about the object answers with a refusal. A memory entry about an object lands on its single anchor; when there is no anchor and the conventional address is free, the App creates the anchor by convention together with the entry, and when a different page is at the address, a deleted one as well, the intent answers with a refusal. Identity is established by the equality of `notion_id`."
+    origin:
+      - docs/2-system.md § Exact identity
+      - docs/3-policy.md § Multiple exact GBrain anchors
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-098.spec.ts
+    related: [INV-097, INV-099, INV-211]
+    notes: "The resolver in `app/src/knowledge/` is a pure function over what GBrain answered: search hits (with their `evidence`) and the pages read. It reads the page at the object's conventional address besides the exact hits, because the search index lags behind a write; it ignores a hit that is not an exact match, a page of a type that is not an anchor type, a deleted page and a page whose `notion_id` differs (a lesson that merely mentions the id); it never picks among two. Where an entry lands is the pure placement over the same reads — the anchor, a new anchor at a free conventional address, or a refusal — and App's memory intent applies it one object at a time, reading the written anchor back. `SCEN-19-38` is this invariant on the two-anchor input. That the model follows the same steps when it reads is measured by gate M7, not asserted here."
+
+  - id: INV-099
+    statement: "The GBrain knowledge rules are pure functions over the pages that were read: `knowledge/` imports only itself, the parsing schemas (`zod`), the frontmatter serialization (`yaml`), the canonical form of the Notion id and the base class of App errors, and everything it knows about GBrain, Notion, `app_db`, time and randomness arrives as arguments."
+    origin:
+      - docs/2-system.md § Module map
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-099.spec.ts
+    related: [INV-094, INV-055]
+    notes: "Same walk over the syntax tree as INV-094 (the impure-expression list is shared with it): a package other than `zod` and `yaml`, a Node module or a file outside the module, the Notion identifier helper and the base class of App errors counts, so do a Nest decorator and a network, process-environment, clock or randomness call. The layer answers questions about pages that were just read, and it is not an App MCP tool: what a person does through GBrain MCP, App MCP does not repeat (INV-055)."
+
+  - id: INV-100
+    statement: "GBrain write authority (`memory_writes`) matches the mode toolsets: a run authority other than `none` is possible for exactly those capabilities that have `mode_toolsets` rows, and `autonomous_gbrain_fact` and `autonomous_gbrain_lesson` from `capture_policy` are the same statements in the form of standing authorization. The generalization thresholds (`memory_thresholds`) in the Skill are the same as in the contract."
+    origin:
+      - docs/3-policy.md § Closure processing and memory policy
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-100.spec.ts
+    related: [INV-096, INV-213, INV-016]
+    notes: "Held by comparing four places that carry the same fact: the `memory_writes` rows, the expansion of `mode_toolsets` bundles into App and GBrain capabilities, `capture_policy`, and the numbers the Skill states for the thresholds. A kind performed by a native GBrain capability has no run authority: runs record memory only through App. The gate's constant listing the GBrain writes a run must not make (`FORBIDDEN_GBRAIN_WRITES`) is every tool of the GBrain `write` bundle. «Only what the person said» and «a source for every entry» stay judgements of the frame and the gate scenarios; the tool list holds what it can (INV-096)."
+
+  - id: INV-101
+    statement: "The sweep writes only `safety_recheck` continuations with no thread, and memory about them: it writes nothing to Notion, to delivery or to proposals, and asserts nothing about the domain."
+    origin:
+      - docs/2-system.md § Periodic safety sweep
+    verifiable_by: ci-contract
+    test: app/test/integration/inv-101.spec.ts
+    related: [INV-017, INV-020, INV-094, INV-212]
+    notes: "Held two ways: a pass over staged candidates of every rule changes exactly `scheduled_checks` (rows with `safety_recheck` and no thread) and `sweep_marks`, counted over every App table; and no file of `app/src/sweeps/` imports the Notion writer, delivery, the executor, capture or memory. Which situations deserve a wake-up is the rules' business (INV-094), and what to do about one is the run's."
+
+  - id: INV-102
+    statement: "Closure is requested only for a thread in which the system has commented and whose thread anchor and last system comment are known: it is not among the unresolved threads listed for that anchor, and the system's comment has not been deleted. A repeat request is made only after the thread has been seen open again."
+    origin:
+      - docs/2-system.md § Resolved-thread reconciliation
+    verifiable_by: ci-contract
+    test: app/test/integration/inv-102.spec.ts
+    related: [INV-089, INV-095, INV-212]
+    notes: "Notion stands in for the comment reads; the registry, the continuation queue and the reconciliation memory are the real database. A thread on a block is listed by its block, since a page listing does not show it; an unreadable comment reads as a deleted thread; a row without a known comment is never asked about. «Seen open» includes the moment the system last wrote into the thread, so a thread resolved before the first tick still closes. That the thread was really resolved rather than deleted the closure run checks itself, reading the thread with its resolved comments."
+
+  - id: INV-103
+    statement: "A scheduled review has one occurrence per period, keyed by the period in the installation's time zone and not by an instant, so a producer retry, a restart, a clock change and an edit of the time in the schedule produce no second occurrence and lose none."
+    origin:
+      - docs/2-system.md § Schedule and recurrence
+    verifiable_by: ci-contract
+    test: app/test/integration/inv-103.spec.ts
+    related: [INV-080, INV-085]
+    notes: "The producer is ticked against the real database with a stated `now`: many ticks within one period, a daily schedule across both Kyiv transitions (a skipped and a doubled hour), and a schedule whose time changes mid-period. The unique index over (mode, period key) holds it under a race too; `schema-shape.spec.ts` checks that it exists. A schedule time inside the skipped hour moves forward, one inside the doubled hour is taken at its first instant (`docs/2-system.md` § “Schedule and recurrence”)."
+
+  - id: INV-104
+    statement: "Only a proposal shown by a delivered Daily Control packet expires: when the next Daily Control occurrence is scheduled, every still-`proposed` proposal shown by the `proposals` fields of sent Daily Control packets expires — and nothing else."
+    origin:
+      - docs/2-system.md § Approval differs by who performs the write
+    verifiable_by: ci-contract
+    test: app/test/integration/inv-104.spec.ts
+    related: [INV-023, INV-026, INV-103]
+    notes: "The producer, delivery and approvals are real over the database: a proposal in a sent daily packet lapses, one in a failed daily packet, in a weekly packet or in no packet stays, an approved one is untouched, an older day's packet counts, and lapsing happens when a new daily occurrence is placed, not on every tick. That a daily review actually puts open proposals into its packet is the frame's and gate M8's business; the structure (`proposals`, at most three, rendered uncut with their buttons) is what makes «shown» checkable."
+
+  - id: INV-105
+    statement: "The person is told exactly once about a review occurrence that did not take place: a `failed` occurrence — both after exhausted attempts and when retired past the window — yields one message with a delivery key per review and period, while an occurrence that took place and one that is still waiting yield none."
+    origin:
+      - docs/2-system.md § Schedule and recurrence
+    verifiable_by: ci-contract
+    test: app/test/integration/inv-105.spec.ts
+    related: [INV-103, INV-023]
+    notes: "The run source that retires occurrences, the producer and the delivery queue are real over the database: a window write-off and an exhausted attempt limit each give one outbox row with its reason, later ticks add nothing, and a lost mark after the enqueue repeats the same key instead of a second message. The wording of the message is the unit spec's business (`review-failure.message.spec.ts`)."
+
+  - id: INV-106
+    statement: "When the App itself writes to the person, it uses only texts from the catalog of the installation's language, and every catalog is complete and fits within the channel limits: the worst-case message of each language passes the queue and fits into one message, proposal fates fit into the reserve for a proposal, captions and replies fit their own limits. Outside the catalogs the App code has no Ukrainian string literal, and a catalog imports only types."
+    origin:
+      - docs/2-system.md § Language of texts for the person
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-106.spec.ts
+    related: [INV-024, INV-105]
+    notes: "Completeness is the compiler's (`satisfies Texts` in each catalog); the test holds what the compiler cannot see, for every language in `LANGUAGES`: worst-case notices (the longest reason, client name and period label) pass the queue schema and have no excess, each outcome mark fits `OUTCOME_UNITS`, the escaped link label fits `LINK_LABEL_UNITS`, button labels and callback answers fit their bounds. A TypeScript scan finds Cyrillic string literals outside `src/texts/`, skipping tagged templates (`Prisma.sql` carries SQL comments for readers); it sees only Ukrainian, which is the point. The reply marker is a protocol, not a text, and is checked against the Skill files that quote it."
+
+  - id: INV-107
+    statement: "A proposal's fate is recorded in its thread as a system write exactly once per transition: the person's decision — approval or rejection — and the non-execution of what was approved; execution and expiry are not written to the thread. The message about the proposal is rewritten by the same step, not by the button-press handler."
+    origin:
+      - docs/2-system.md § Approval differs by who performs the write
+    verifiable_by: ci-contract
+    test: app/test/integration/inv-107.spec.ts
+    related: [INV-023, INV-024, INV-026]
+    notes: "Needs the App database: the published fate is a column of `pending_actions`, and «once per transition» is held by marking it after the Notion write, so a retry after a failed write writes again and a retry after a marked one does not."
+
+  - id: INV-108
+    statement: "The person is told exactly once about a wake whose time the person named (`user_snooze`, `deadline_followup`) and that did not take place: a `failed` wake yields one message with the delivery key that the run of that wake would have set, with its thread and page, sent regardless of quiet hours. A reminder the run managed to queue stays the only one, while a wake whose time the system chose, and wakes that are not retired, yield no message."
+    origin:
+      - docs/2-system.md § Scheduler and outbox
+    verifiable_by: ci-contract
+    test: app/test/integration/inv-108.spec.ts
+    related: [INV-084, INV-105]
+    notes: "The run source that retires wake-ups, the worker, the delivery service and the queue are real over the database: an exhausted snooze gives one outbox row keyed like the run's own delivery, later ticks add nothing, a lost mark after the enqueue repeats the same key, and a reminder the run had already queued keeps its content. The wording and the local moment are the unit spec's business (`wake-failure.message.spec.ts`)."
+
+  - id: INV-109
+    statement: "A run that did not reach Notion writes nothing and sets no continuations, and the App retries the same run: the attempt is refunded, and the same row waits out a pause that grows with the time it has spent waiting consecutively; other rows, including those of the same group, carry on as usual. A change to the row and a run that reached Notion lift the wait; a row that has waited longer than the limit no longer waits — an ordinary failure follows, which the breaker sees; a person's snooze never waits. The pause and the limit are set by policy (`docs/3-policy.md` § “Notion unavailability”)."
+    origin:
+      - docs/2-system.md § Scheduler and outbox
+    verifiable_by: ci-contract
+    test: app/test/integration/inv-109.spec.ts
+    related: [INV-082, INV-084, INV-085, INV-108, INV-301]
+    notes: "The scheduler, dispatcher, gates, ledger and run sources are real over the database; only the model run and the App side of it are stood in: a deferred run leaves a discarded session, no continuation and a ledger row without a reset moment, its row waits while a later row of the same group runs, a run that reached Notion releases the pauses (each row at most once per streak) but keeps each row's first deferral, a person's event in the window and a moved continuation clear the wait, a row that waited a day fails as an ordinary failure, and a snooze fails without waiting. What counts as «did not reach Notion» is the classifier's (`run-classifier.spec.ts`, `init-check.spec.ts`), the pause SQL and the fence are `run-row-source.spec.ts`."
+
+# ---------------------------------------------------------------------------
+# INV-201..INV-221 — release criteria. No `origin`: this registry owns their wording.
+# INV-2NN == SCEN-20-NN == `mvp20_ordinal: NN`. Each of the 21 criteria is stated
+# here in full: docs/4-acceptance.md cites these IDs and carries none of this text
+# itself.
+# ---------------------------------------------------------------------------
+
+  - id: INV-201
+    mvp20_ordinal: 1
+    statement: "**Proactivity.** Relevant Notion changes and the passage of time start a cognitive cycle without manual review. An unfinished situation has a reliable continuation path."
+    verifiable_by: integration
+    test: app/test/integration/inv-201.spec.ts
+    related: [INV-018, INV-020]
+    notes: "Reads as an acceptance scenario (the system works end to end) more than a standing invariant; encoded in full because this registry owns their wording. Needs live Notion webhooks plus the scheduler; the scheduler half alone is ci-contract."
+
+  - id: INV-202
+    mvp20_ordinal: 2
+    statement: "**Methodology conformance.** The MVP uses the canonical Levels, object types, statuses, lifecycles and decision rules of the canonical methodology. Physical properties outside the canonical model do not become domain entities and do not acquire semantics by name."
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-202.spec.ts
+    related: [INV-038, INV-077, INV-206, INV-207]
+    notes: "Canonical enum conformance is assertable. The physical workspace carries properties with no canonical home; the invariant forbids reading meaning into them, not their existence."
+
+  - id: INV-203
+    mvp20_ordinal: 3
+    statement: "**Data ownership.** Current management and operational state live in Notion. Durable attention interaction lives in discussions. Long-term knowledge lives in GBrain. App persistence contains only technical/runtime continuity state."
+    verifiable_by: manual
+    test: null
+    same_as: [INV-050, INV-051, INV-052]
+    related: [INV-017, INV-046]
+    notes: "One sentence restating INV-050, INV-051 and INV-052 plus the discussions clause. Kept as its own entry because the INV-2xx band owns its wording; the enforceable test lives on INV-052/INV-017."
+
+  - id: INV-204
+    mvp20_ordinal: 4
+    statement: "**Attention cardinality.** Several independent attention episodes can exist at the same time on one canonical Notion object. Their identity is the native `discussion_id`."
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-204.spec.ts
+    related: [INV-020]
+    notes: "Assertable against the app_db schema: attention episodes (`scheduled_checks`) are keyed by `discussion_id`: the active-continuation indexes of a thread are per discussion (one wake-up and one closure each). The one per-page index, `scheduled_checks_one_active_per_page_reason`, holds only rows with no thread yet (`discussion_id IS NULL`), one per page and reason, so it never limits the threads on a page. `evaluation_windows` is unique per open page, but a window is a debounce carrier, not an attention episode."
+
+  - id: INV-205
+    mvp20_ordinal: 5
+    statement: "**Operating loop.** Capture stores input without premature classification; Clarify determines the nature of the object and the workflow; Organize & Align writes to the correct store without an artificial hierarchy; Engage uses Calendar and Available Now; Reflect reads the current state; Adapt changes course according to evidence and authorization."
+    verifiable_by: eval
+    test: app/test/eval/inv-205.eval.ts
+    related: [INV-010, INV-011, INV-012]
+    notes: "A behavioural description of the whole loop; every clause is a property of model output. Encoded in full because this registry owns their wording."
+
+  - id: INV-206
+    mvp20_ordinal: 6
+    statement: "**Execution model.** A Task has one of seven canonical statuses; time fields do not replace the status; Available Now contains only eligible `Next Action` Tasks after Project/context constraints."
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-206.spec.ts
+    related: [INV-004, INV-005, INV-006]
+    notes: "“Time fields do not replace the status” is the broad form of INV-006; the seven-status enum and the Available Now eligibility filter are additional substance, so it stands as its own invariant beside INV-006."
+
+  - id: INV-207
+    mvp20_ordinal: 7
+    statement: "**Change mechanisms.** A Project and a Behavior System are different L1 mechanisms. A Project has five canonical statuses; a Behavior System has five lifecycle states, separate from Routine/Habit automaticity. A Behavior System is the definition of a behavior; a Task is a single execution of it."
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-207.spec.ts
+    related: [INV-202, INV-009]
+
+  - id: INV-208
+    mvp20_ordinal: 8
+    statement: "**Direction model.** An Area of Focus has a `Mode`; the `Standard` accumulates in the course of review and is not a condition for usefulness; Objective/Key Result is used for meaningful change, not ordinary maintenance; a completed Project is not evidence of an achieved Key Result."
+    verifiable_by: eval
+    test: app/test/eval/inv-208.eval.ts
+    related: [INV-009, INV-207]
+    notes: "Clause 1 (`Mode` exists as a closed set) is ci-contract. “Meaningful change, not ordinary maintenance” and the rule that a completed Project is not evidence of a Key Result are reasoning rules and need a model. Classified by the weakest clause."
+
+  - id: INV-209
+    mvp20_ordinal: 9
+    statement: "**Context efficiency.** Claude does not receive the whole workspace or the whole GBrain. Context is opened progressively; full pages are read only when needed."
+    verifiable_by: eval
+    test: app/test/eval/inv-209.eval.ts
+    related: [INV-037, INV-215]
+    notes: "“Full pages are read only when needed” can only be judged over real run traces. Distinct from INV-215, which is about what the execution and review surfaces show the person."
+
+  - id: INV-210
+    mvp20_ordinal: 10
+    statement: "**Reasoning quality.** Every proactive detection has source-backed evidence, a counterevidence check, `why_now` and a concrete actionable consequence."
+    verifiable_by: eval
+    test: app/test/eval/inv-210.eval.ts
+    related: [INV-036]
+    notes: "Presence of the fields is ci-contract: `outputFormat: { type: 'json_schema' }` constrains the result against the schema emitted from the zod result model (canonical shape: `contracts/canonical.yaml`, key `evaluation_result`), and INV-035 makes a missing `structured_output` a failure. Whether the evidence is source-backed and the counterevidence check real is eval; INV-036 covers the mechanical evidence-ref check."
+
+  - id: INV-211
+    mvp20_ordinal: 11
+    statement: "**Safety.** Material autonomous domain writes are executed only after the required approval and a recheck of the current state. Higher-Level changes and generalized personal patterns have a higher threshold of authorization and evidence. An explicit instruction from the person authorizes only the exact requested mutation."
+    verifiable_by: eval
+    test: app/test/eval/inv-211.eval.ts
+    related: [INV-016, INV-026, INV-027, INV-034]
+    notes: "The executor-side gate (approval required, state re-read before write) is ci-contract and is covered by INV-034/INV-026/INV-016. “An explicit instruction from the person authorizes only the exact requested mutation” is scope discipline in the model and cannot be gated mechanically — the Chat-path enforcement gap at the enforcement-boundary table in `docs/2-system.md` § “mode → toolset” is exactly this."
+
+  - id: INV-212
+    mvp20_ordinal: 12
+    statement: "**Reliability.** Duplicate events, restarts, retries and missed events create no duplicates and lose no follow-through."
+    verifiable_by: ci-contract
+    test: app/test/integration/inv-212-continuation.spec.ts
+    related: [INV-022, INV-030, INV-032, INV-035, INV-101, INV-102]
+    notes: "The one ID over `docs/3-policy.md` § “Behavior under degradation and failures”: that section states the required behavior per failure mode without minting an ID per subsection, because each mode's enforceable contract already has one. Retry counts and profiles are mechanism (INV-032, INV-035), not policy. “Create no duplicates” applies to follow-through, that is, to the domain effect: delivery on the wire stays at-least-once by design, and an extra message is not a follow-through duplicate. A missed event is either a situation that arose without an event, or a thread resolution that Notion does not report: the first is woken by the periodic safety sweep (INV-101), the second is closed by resolved-thread reconciliation (INV-102); the named test covers a duplicate, a restart, a retry and both missed-event paths all the way to the continuation in the queue."
+
+
+  - id: INV-213
+    mvp20_ordinal: 13
+    statement: "**Memory quality.** GBrain receives durable knowledge, not operational noise. Generalized behavior/cognitive patterns require repeated evidence and user confirmation."
+    verifiable_by: eval
+    test: app/test/eval/inv-213.eval.ts
+    related: [INV-016, INV-051]
+    notes: "The user-confirmation half is ci-contract (`contracts/canonical.yaml`, key `capture_policy.autonomous_gbrain_lesson`: `false`). “Durable knowledge, not operational noise” is a judgment about content."
+
+  - id: INV-214
+    mvp20_ordinal: 14
+    statement: "**User value.** A notification arrives as a decision packet, not just a message about a problem. The person can clarify, correct, snooze, reject or approve an action in natural language."
+    verifiable_by: eval
+    test: app/test/eval/inv-214.eval.ts
+    related: [INV-021, INV-024]
+    notes: "Decision-packet shape is judged on generated output. The second sentence is a capability statement closer to an acceptance scenario."
+
+  - id: INV-215
+    mvp20_ordinal: 15
+    statement: "**Selective exposure.** A trusted system can be complete, but the execution and review surfaces show only the relevant scope. The MVP does not turn the whole backlog into Available Now and does not load all Levels into every run."
+    verifiable_by: eval
+    test: app/test/eval/inv-215.eval.ts
+    related: [INV-206, INV-209]
+
+  - id: INV-216
+    mvp20_ordinal: 16
+    statement: "**Anti-bureaucracy.** The MVP does not create an object, relation, metric, recurring Task or review if they neither preserve control nor change a decision."
+    verifiable_by: manual
+    test: null
+    notes: "“If they neither preserve control nor change a decision” is the operative clause and is a design judgment. Its runtime half (the model not creating ceremonial objects) would be eval."
+
+  - id: INV-217
+    mvp20_ordinal: 17
+    statement: "**Ingress parity.** A relevant situation, created in Claude Chat or directly in Notion, enters the same authority model and behavioral lifecycle."
+    verifiable_by: eval
+    test: null
+    same_as: [INV-047]
+    notes: "Same invariant as INV-047. Measured by `path-parity rate` — `docs/3-policy.md` § “Behavior metrics”; the test lives on INV-047."
+
+  - id: INV-218
+    mvp20_ordinal: 18
+    statement: "**Durable conversation outcomes.** Closing Claude Chat cannot erase a future obligation that the system has already taken on for follow-through."
+    verifiable_by: integration
+    test: app/test/integration/inv-218.spec.ts
+    related: [INV-045]
+    notes: "The App-side half (continuation state survives with no session dependency) is ci-contract. Proving the Chat path actually registers the obligation before the window closes needs a real Claude Chat run."
+
+  - id: INV-219
+    mvp20_ordinal: 19
+    statement: "**Behavior parity.** The Claude Chat Plugin and App-triggered Claude apply the same canonical Personal Management System behavior release."
+    verifiable_by: ci-contract
+    test: null
+    same_as: [INV-048]
+    notes: "Same invariant as INV-048: one commit and one knowledge source serve both surfaces. The test lives there."
+
+  - id: INV-220
+    mvp20_ordinal: 20
+    statement: "**Native domain interfaces.** Writes on behalf of the person in Notion and GBrain are made through native MCP operations; the system writes to Notion on its own behalf only through the App, with a closed list of intents; the App MCP does not duplicate the domain API."
+    verifiable_by: manual
+    test: null
+    same_as: [INV-025]
+    related: [INV-028, INV-053, INV-054]
+    notes: "Same invariant as INV-025; the enumerable test lives on INV-028."
+
+  - id: INV-221
+    mvp20_ordinal: 21
+    statement: "**Proactive delivery.** At least one real notification delivery adapter is configured and has passed retry/idempotency acceptance; a specific provider can be replaced without changing state ownership."
+    verifiable_by: integration
+    test: app/test/integration/inv-221.spec.ts
+    related: [INV-021, INV-024]
+    notes: "Clause 1 (“At least one real notification delivery adapter is configured and has passed retry/idempotency acceptance”) is an acceptance criterion, and a real adapter means a live Telegram. Clause 2 (provider substitutable without changing state ownership) is the genuine invariant and is ci-contract via INV-021/INV-024."
+
+# ---------------------------------------------------------------------------
+# INV-301..INV-315 — docs/2-system.md: App-triggered runner, Skill layer, the Chat path
+# and the channel reply. These are normative rules of those sections that no INV-0xx/INV-2xx entry
+# covers. `origin` names the section, not a line: docs/2-system.md is live and its
+# lines move.
+# ---------------------------------------------------------------------------
+
+  - id: INV-301
+    statement: "A failed MCP server connection throws no error: the status of each of the three servers arrives in the run's init message. The runner checks the statuses before trusting the result; a run that started without `connected` on a required server — Notion or App, `contracts/canonical.yaml`, key `mode_toolsets.required_servers` — is never a run with the outcome `no_action`: it is a technical failure, and when the only init problem is that Notion is currently not responding (`failed`, `pending`), it is a deferral, after which the App retries the same run (`INV-109`). Revoked access (`needs-auth`) and a disabled server are always a failure. GBrain degrades: without it the run continues, and the trace records this."
+    origin:
+      - docs/2-system.md § Runner MCP connections
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-301.spec.ts
+    related: [INV-034, INV-035, INV-049, INV-061, INV-302]
+    notes: "The gate is a pure function of the `init` message and the mode→toolset requirement, so it is assertable over init fixtures: a `failed` or `needs-auth` status on a server the mode needs is an init problem, never a `no_action` result; a Notion `failed`/`pending` that is the only problem is the deferral (`notionUnavailableAtInit`), anything else a technical failure. Observing a real `needs-auth` — an expired Notion OAuth grant — is integration and belongs to INV-061."
+
+  - id: INV-302
+    statement: "The tool surface is closed in the run's effective configuration, not only in intent: `tools` in the init message contains no built-in tool except `Read` in the plugin directory, and no name outside `mcp__app__*`, `mcp__notion__*`, `mcp__gbrain__*` other than the declared harness tools (`contracts/canonical.yaml`, keys `harness_tools` and `plugin_tools`). The `query()` options set the intent; an organization's managed policy can only narrow it."
+    origin:
+      - docs/2-system.md § Tool surface boundaries
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-302.spec.ts
+    related: [INV-034, INV-040, INV-049]
+    notes: "Two App-side artifacts, no model and no live run needed: the options object (INV-049 states it) and the `init` message's `tools` array. The init check is the one that catches a perimeter the options object alone would not show — a name present in `init` but outside the three `mcp__*` prefixes, the harness tools and `Read` fails it. A vendor tool the contract does not know is denied and the start repeated once (`ADR 0031`)."
+
+  - id: INV-303
+    statement: "No App MCP tool result exceeds the threshold beyond which the CLI writes the result to a file and replaces it with an error containing the file name: the run's `MAX_MCP_OUTPUT_TOKENS` and the ~100 KB limit for persisting output. `Read` in a run is limited to the plugin directory (`INV-311`), so Claude cannot read that file: every App MCP tool has a declared response bound within both thresholds, and where the bound can truncate a collection, the response says that the collection was truncated. This is a requirement on App MCP tools, not on the Skill's instructions."
+    origin:
+      - docs/2-system.md § Tool surface boundaries
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-303.spec.ts
+    related: [INV-028, INV-049, INV-302]
+    notes: "Assertable over the App MCP tool registry: every tool declares a bound on its result, every bound fits both the run's `MAX_MCP_OUTPUT_TOKENS` and the CLI's persisted-output size, and data-dependent bounds are checked against their worst case. Whether a live payload stays under the bound is integration; the bound itself is a design property of each tool and is checkable without a model. The bounds live in the App MCP tool table (`app/src/mcp/server/tools/`), the same table the server registers tools from."
+
+  - id: INV-304
+    statement: "`query()` spawns one subprocess per run (≈1 GiB) and has no upper session timeout, so the App enforces the bound through four mechanisms: its own queue with limited concurrency, `maxTurns`, `maxBudgetUsd` and its own `AbortController`. The number of concurrent runs is a parameter of the App, not a consequence of how many triggers arrive at once."
+    origin:
+      - docs/2-system.md § Runner execution environment
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-304.spec.ts
+    related: [INV-031, INV-032, INV-212]
+    notes: "The subprocess itself has no upper bound: a run without these four would cost as much memory and time as the CLI chose to take. All four bounds are App-side properties: the queue has a configured concurrency limit, every `RunProfile` carries `maxTurns` and `maxBudgetUsd`, and each run is started with an abort handle. How the host behaves under a real webhook burst is integration — this entry is the contract that the burst is bounded at all."
+
+  - id: INV-305
+    statement: "The production App image does not install dependencies with `npm ci --omit=optional`: the SDK's bundled CLI binary arrives through npm optional dependencies and is pinned to the SDK package version, so an image built without optional dependencies does not contain the binary and the runner does not start in it. The image contains exactly one binary — the one for its own libc: `npm ci` selects it by the `os`, `cpu` and `libc` recorded in the lockfile."
+    origin:
+      - docs/2-system.md § Runner execution environment
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-305.spec.ts
+    related: [INV-074, INV-075]
+    notes: "Assertable statically against the checked-in lockfile and Dockerfile: no `--omit=optional` or `--no-optional` flag, every platform package pinned to the `@anthropic-ai/claude-agent-sdk` package version, and every `*-musl` / non-musl pair carrying a `libc` field. The `libc` field is the load-bearing part and is easy to lose: npm writes it only on a resolution from scratch by npm 11 or newer, and never backfills it into an existing lockfile, so a lockfile refreshed by an older npm silently drops it and doubles the image. That the built image actually starts the runner is integration, the same split as INV-065's deployed-endpoint half."
+
+  - id: INV-306
+    statement: "The run's environment equals the declared set."
+    origin:
+      - docs/2-system.md § Run invocation
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-306.spec.ts
+    related: [INV-301, INV-305]
+    notes: >-
+      Assertable over the env object the runner builds, with no model and no live run: its key
+      set equals the declared set. The `env` option replaces the process environment rather
+      than merging into it, so that set is the whole environment the subprocess sees, and the
+      run's authentication is determined by it.
+
+  - id: INV-307
+    statement: "An `allowedTools` entry names a specific tool or a narrow prefix within a single server. A whole server name — `mcp__notion__*` — is never an allow entry. A run's allow-set equals the row of its mode in the mode → toolset matrix."
+    origin:
+      - docs/2-system.md § Tool surface boundaries
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-307.spec.ts
+    related: [INV-034, INV-049]
+    notes: >-
+      Assertable over the options object with no model and no live run: every `allowedTools`
+      entry matches `mcp__<server>__<name>` with a non-empty name segment, and the set equals
+      the tools the mode's row in the matrix names. A bare-server entry auto-approves every
+      tool that server exposes now and every one it adds later, which `INV-302`'s prefix check
+      cannot distinguish from an intended one — the shape rule is what keeps that check
+      meaningful. The server segment must stay glob-free because the SDK ignores an unanchored
+      allow entry with a startup warning.
+  - id: INV-308
+    statement: "The Skill refers to a capability, not to a tool name. Tool names differ between the Chat path and the App-triggered path, so a behavior tied to a literal tool name is not reproduced on one of the paths."
+    origin:
+      - docs/2-system.md § Skill layer contract
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-308.spec.ts
+    related: [INV-302, INV-307]
+    notes: >-
+      Assertable statically over the Skill source with no model and no live run: no Skill file of
+      either plugin contains an `mcp__` token. The plugin loader scopes its servers as
+      `mcp__plugin_<plugin-name>_<server>__<tool>`, account connectors carry names the client
+      assigns, and the programmatic run uses `mcp__<server>__<tool>`, so a literal tool name can be correct on at most one path.
+      This is what lets one knowledge source serve both surfaces, which `path-parity rate` measures.
+
+  - id: INV-309
+    statement: "A dead Notion MCP grant is a `runner_not_ready` denial that comes before budget and admission: there is no ledger row, the origin row's attempt is not spent, and the breaker does not see a run denied for this reason."
+    origin:
+      - docs/2-system.md § Observability and cost
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-309.spec.ts
+    related: [INV-061, INV-084, INV-301]
+    notes: "Assertable over the dispatcher and the runner port with no database and no live grant: a runner whose readiness reports a missing or expired grant makes `dispatch` answer `runner_not_ready` before the budget is consulted and before admission writes a ledger row, and before the row's attempt is recorded. Whether the grant is alive is the grant's own judgement (`NotionMcpGrant`): not authorized, past its inactivity limit or past its ceiling."
+
+  - id: INV-310
+    statement: "The token that Claude Chat uses to talk to the App MCP is issued by the App for this endpoint: the token's audience is `APP_MCP_URL`, the client's `redirect_uri` comes only from the allowlist (the claude.ai and claude.com callbacks and loopback, ignoring the port), PKCE S256 is mandatory, the authorization code is single-use and short-lived, access and refresh tokens live in `app_db` only as hashes, and the refresh token is rotated: an old one, presented a second time, revokes the whole family."
+    origin:
+      - docs/2-system.md § Authentication boundary
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-310.spec.ts
+    related: [INV-065, INV-313]
+    notes: >-
+      Assertable over the OAuth server without a model or a live client: a client registered
+      with a redirect URI outside the allowlist is refused, a code redeems once, the audience
+      of an issued token is the declared MCP URL, no table column holds a token in clear, and a
+      replayed refresh token revokes its family. That the real claude.ai and Claude Code
+      clients complete the flow against the public endpoint is integration, by hand.
+
+  - id: INV-311
+    statement: "The only built-in tool of an App-triggered run is `Read`, and it is limited to the plugin directory: a successful read of a file outside it is a run failure, no matter which allow entry the CLI gave. A denied attempt is not a failure."
+    origin:
+      - docs/2-system.md § Tool surface boundaries
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-311.spec.ts
+    related: [INV-049, INV-302, INV-308]
+    notes: >-
+      Two layers, both assertable without a model: the allow rule is `Read(//<plugin dir>/**)`
+      for every mode, and the stream observer fails a run whose `Read` outside the plugin
+      directory succeeded — an absolute path outside it, a `..` escape or a relative path — while
+      a denied attempt is the perimeter working. That the CLI itself denies reads outside the
+      directory is a property of the pinned CLI; gate M3 proves it against the live stack for an
+      absolute path outside the directory, and does not exercise a symlink or a `..` escape.
+
+  - id: INV-312
+    statement: "A person's reply in the channel to a system message is written to Notion — as a quoting comment by the bot in the thread the message belongs to — before any step of the model, and only then is the evaluation window opened. Neither the run's trigger envelope nor `app_db` carries the content of the reply. Text that is not a reply to a system message is not accepted: the channel is meant only for a dialogue that the system starts."
+    origin:
+      - docs/2-system.md § Telegram — channel adapter
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-312.spec.ts
+    related: [INV-012, INV-024, INV-030]
+    notes: >-
+      Assertable over the reply consumer with fakes for the thread and the window repository: the
+      Notion comment precedes the window, the window carries identifiers only, and the consumer
+      imports nothing from the runner, so a missing model cannot lose the reply. A reply whose
+      Notion write fails opens no window: when Notion is unavailable the person is told at once to
+      send it later and the receipt is settled rejected (ADR 0045), and if even that answer fails —
+      or the write failed otherwise — the receipt stays retryable, so the provider's redelivery
+      repeats the work. A reply that belongs to no thread writes nothing and is settled rejected
+      with a named reason.
+
+  - id: INV-313
+    statement: "The toolset of App tools on the Chat path contains neither `add_comment` (the person's voice in the chat goes through the Notion MCP) nor `create_pending_action`: a proposal from the chat left unanswered in the same turn stays an Inbox item (`INV-015`)."
+    origin:
+      - docs/2-system.md § mode → toolset
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-313.spec.ts
+    related: [INV-015, INV-053, INV-310]
+    notes: >-
+      Assertable over `chat_toolset` in `contracts/canonical.yaml` and its mirror in
+      `app/src/runs/toolsets.ts`: neither capability is granted. The Chat path's Notion and
+      GBrain toolset is the user's, so this is the one half of the Chat toolset the App can hold
+      mechanically.
+
+  - id: INV-314
+    statement: "**The Skill is an instruction for an agent, not a copy of the norms.** The text of the Skill is read by a model that does not know the project: it contains no implementation requirements, acceptance criteria, register gaps, references to norms and decisions, design rationales or negations of its own identity; every rule is stated in one place. The behavior a norm requires is ensured by the implementation, not by a reminder in the text."
+    origin:
+      - docs/2-system.md § Decomposition
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-314.spec.ts
+    related: [INV-037, INV-038, INV-308]
+    notes: >-
+      Assertable only in part: the test scans every Skill file for markers of author
+      context (norm and registry references, builder requirements, acceptance wording,
+      mechanism words, identity by negation, words the Skill does not use). Narrating a
+      change is held by `app/test/contract/final-state.spec.ts`.
+      Whether each remaining sentence changes the agent's behaviour or gives a fact it cannot
+      read from its tools stays an editorial judgement, as in `INV-037`.
+
+  - id: INV-315
+    statement: "**A surface has its own entry; knowledge knows nothing of the surface.** The Chat entry does not speak of runs, the run entry does not speak of Chat, and the knowledge both read speaks of neither. “In Chat… in a run…” inside one file means there are too few files, not that the agent has to be told how it was launched."
+    origin:
+      - docs/2-system.md § Decomposition
+    verifiable_by: ci-contract
+    test: app/test/contract/inv-315.spec.ts
+    related: [INV-037, INV-314]
+    notes: >-
+      Assertable only in part: the test scans each entry's files for the markers of the other
+      surface (envelope, staged writes, the word Chat) and the shared knowledge for both. A file that avoids the words and still describes how the agent is
+      started stays an editorial judgement, as in `INV-314`.

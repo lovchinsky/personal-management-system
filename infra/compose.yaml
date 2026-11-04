@@ -1,0 +1,379 @@
+name: personal-management-system
+
+# The environment and volumes of GBrain are shared by the server and maintenance: both work with
+# the same database, home directory and memory repository.
+x-gbrain-environment: &gbrain-environment
+  HOME: /data/home
+  GBRAIN_HOME: /data/home/.gbrain
+  GBRAIN_DATABASE_URL: >-
+    postgresql://gbrain_user:${GBRAIN_DB_PASSWORD}@postgres:5432/gbrain_db
+  GBRAIN_ADMIN_BOOTSTRAP_TOKEN: ${GBRAIN_ADMIN_BOOTSTRAP_TOKEN}
+  GBRAIN_FTS_LANGUAGE: ${GBRAIN_FTS_LANGUAGE:-english}
+  # The embedding model and the vector width are set for every GBrain process, whether or not its
+  # config.json already exists: without them GBrain uses a different model with a different
+  # column width.
+  GBRAIN_EMBEDDING_MODEL: ${GBRAIN_EMBEDDING_MODEL:-voyage:voyage-4}
+  GBRAIN_EMBEDDING_DIMENSIONS: ${GBRAIN_EMBEDDING_DIMENSIONS:-1024}
+
+  VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+
+x-gbrain-volumes: &gbrain-volumes
+  - type: bind
+    source: ${GBRAIN_REPO_PATH}
+    target: /brain
+  - gbrain_home:/data/home
+
+# The App environment is shared by the main process and the gate environment; the gate overrides
+# everything in it that belongs to the main workspace and database (the `gate` service below,
+# ADR 0041).
+x-app-environment: &app-environment
+  PORT: "3000"
+  DATABASE_URL: >-
+    postgresql://app_user:${APP_DB_PASSWORD}@postgres:5432/app_db
+  APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Kyiv}
+  # The App code supplies the default (ADR 0042): empty is the same as unset.
+  APP_LANGUAGE: ${APP_LANGUAGE:-}
+  # The grammatical gender the App uses when it addresses the owner (ADR 0046): empty means
+  # sentences without gender forms.
+  APP_OWNER_GENDER: ${APP_OWNER_GENDER:-}
+  # The assistant name (ADR 0049): empty means an assistant without a name.
+  APP_ASSISTANT_NAME: ${APP_ASSISTANT_NAME:-}
+  # The grammatical gender the assistant uses when it speaks of itself (ADR 0046): empty means
+  # sentences without gender forms.
+  APP_ASSISTANT_GENDER: ${APP_ASSISTANT_GENDER:-}
+  CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+  # The runner is an explicit switch, off by default (ADR 0013): its runs share the plan quota
+  # with interactive work; the gate turns it on itself.
+  RUNNER_ENABLED: ${RUNNER_ENABLED:-false}
+  # Background work (delivery, the executor, the scheduler) is toggled by a single switch.
+  WORKERS_ENABLED: ${WORKERS_ENABLED:-true}
+  # The public address of the App MCP, for the chat: it is also the resource and the issuer of
+  # the App's authorization server.
+  APP_MCP_URL: ${APP_MCP_URL}
+  # The owner passphrase on the OAuth consent page; without it the server does not respond.
+  APP_OAUTH_OWNER_PASSPHRASE: ${APP_OAUTH_OWNER_PASSPHRASE:-}
+  # The runner reaches GBrain over the Compose network, not through the chat's public address.
+  RUNNER_GBRAIN_MCP_URL: http://gbrain:3131/mcp
+  GBRAIN_OAUTH_TOKEN_URL: http://gbrain:3131/token
+  GBRAIN_OAUTH_SCOPE: "read write"
+  GBRAIN_CLIENT_ID: ${GBRAIN_CLIENT_ID:-}
+  GBRAIN_CLIENT_SECRET: ${GBRAIN_CLIENT_SECRET:-}
+  NOTION_API_TOKEN: ${NOTION_API_TOKEN}
+  NOTION_API_VERSION: ${NOTION_API_VERSION}
+  NOTION_WEBHOOK_SECRET: ${NOTION_WEBHOOK_SECRET}
+  NOTION_WEBHOOK_AWAITING_VERIFICATION: ${NOTION_WEBHOOK_AWAITING_VERIFICATION:-false}
+  # The App reads an empty value as unset and takes its own default (tmpfs `/run/app`).
+  NOTION_VERIFICATION_TOKEN_PATH: ${NOTION_VERIFICATION_TOKEN_PATH:-}
+  NOTION_MCP_CLIENT_NAME: ${NOTION_MCP_CLIENT_NAME:-}
+  NOTION_MCP_URL: ${NOTION_MCP_URL:-https://mcp.notion.com/mcp}
+  NOTION_MCP_REDIRECT_URI: ${NOTION_MCP_REDIRECT_URI:-http://localhost:8765/callback}
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+  TELEGRAM_ALLOWED_CHAT_ID: ${TELEGRAM_ALLOWED_CHAT_ID}
+  TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
+  APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY}
+  QUIET_HOURS_ENABLED: ${QUIET_HOURS_ENABLED:-true}
+  QUIET_HOURS_START: ${QUIET_HOURS_START:-23:00}
+  QUIET_HOURS_END: ${QUIET_HOURS_END:-08:00}
+  REVIEW_DAILY_CONTROL: ${REVIEW_DAILY_CONTROL:-}
+  REVIEW_WEEKLY_CONTROL: ${REVIEW_WEEKLY_CONTROL:-}
+  REVIEW_STRATEGIC: ${REVIEW_STRATEGIC:-}
+  REVIEW_DEEP: ${REVIEW_DEEP:-}
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.2-pg17
+    restart: unless-stopped
+    # Without a limit, json-file grows without bound on the same volume where Postgres lives.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+      # `postgres/init.sql` reads the passwords of the App and GBrain roles.
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+      GBRAIN_DB_PASSWORD: ${GBRAIN_DB_PASSWORD}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    # Roles, databases and extensions. The image runs the file by itself when the volume is empty;
+    # it is rerun by hand (the file itself says when and how).
+    configs:
+      - source: postgres_init
+        target: /docker-entrypoint-initdb.d/init.sql
+
+    # Over TCP, not the socket: while the image runs `init.sql`, the temporary server listens only
+    # on the socket, and a check through the socket would report a database without roles as
+    # healthy.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+    networks:
+      - data
+
+  # The App image is built from this repository (`docker compose build app`) or taken from the
+  # registry that `APP_IMAGE` names. On startup the App applies its migrations.
+  app:
+    image: ${APP_IMAGE:-personal-management-system-app:local}
+    build:
+      context: ..
+      dockerfile: app/Dockerfile
+      target: runtime
+
+    restart: unless-stopped
+    # Without a limit, json-file grows without bound on the same volume where Postgres lives.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    environment:
+      <<: *app-environment
+      NOTION_MAPPING_FILE: /etc/app/notion-mapping.yaml
+
+    # `configs`, not a bind mount: when the file is missing Compose aborts startup, while a bind
+    # mount would silently create a directory in its place and start the App with nothing in it.
+    configs:
+      - source: notion_mapping
+        target: /etc/app/notion-mapping.yaml
+
+    # `verification_token`, the webhook signing secret, goes here and not into the log, and tmpfs
+    # erases it with the same restart that closes the provisioning window
+    # (`docs/2-system.md` § “Subscription verification token”). The App runs as `node`
+    # (1000), so the owner of the mount is `node`: without `uid`/`gid` the tmpfs belongs to root
+    # with mode 0700, the App cannot write there, and the Notion handshake fails.
+    tmpfs:
+      - /run/app:mode=0700,size=1m,uid=1000,gid=1000
+
+    expose:
+      - "3000"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - data
+      - services
+
+  # The gate environment is the App's acceptance test (ADR 0041). It is the same App image
+  # together with the gate, with its own instance of each dependency: the database `app_db_gate`,
+  # the gate's Notion workspace with its integration and binding, and the gate's GBrain client.
+  # The service has no token for the main Notion workspace, and from the main binding the
+  # preparation takes only the `workspace` key. The gate replaces the App's Telegram bot with its
+  # own (`app/test/gate/gate-boot.ts`). The preparation takes the gate workspace's schema from the
+  # contract `contracts/notion-workspace.yaml`, which is in the image. `up` does not start the
+  # service: the gate is launched by `bin/gate`, which also passes `.env.gate`.
+  gate:
+    image: personal-management-system-gate:local
+    build:
+      context: ..
+      dockerfile: app/Dockerfile
+      target: gate
+
+    profiles: [gate]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    environment:
+      <<: *app-environment
+      DATABASE_URL: >-
+        postgresql://app_user:${APP_DB_PASSWORD}@postgres:5432/app_db_gate
+      NOTION_API_TOKEN: ${GATE_NOTION_API_TOKEN:-}
+      NOTION_MAPPING_FILE: /etc/app/gate/notion-mapping.yaml
+      # The gate worlds and phrasing pools are Ukrainian and the gate checks the Ukrainian catalog,
+      # so the gate App writes in Ukrainian whatever language the main installation uses.
+      APP_LANGUAGE: uk
+      # The gate environment has no public endpoint: the address from the main environment is the
+      # main App's, and the gate does not check the chat path, authorization included. The App
+      # reads an empty value as absent.
+      APP_MCP_URL: ""
+      APP_OAUTH_OWNER_PASSPHRASE: ""
+      # The gate's connection is recognizable in the workspace by its name: “Personal Management
+      # System gate”, not the main “Personal Management System”.
+      NOTION_MCP_CLIENT_NAME: Personal Management System gate
+      # The full stream of every gate run goes into one file per run (`<id>.jsonl`), for analyzing
+      # the conclusion; the gate also uses it to keep its tally of the Notion MCP query allowance.
+      GATE_TRANSCRIPTS_DIR: /etc/app/gate/transcripts
+      # The hourly allowance of `sql`/`rows` queries of the Notion MCP in the gate workspace: the
+      # default is 10 (Free), `unlimited` for a gate workspace on Business (`infra/GATE.md`
+      # § “Gate environment”).
+      GATE_NOTION_QUERY_ALLOWANCE: ${GATE_NOTION_QUERY_ALLOWANCE:-}
+      GBRAIN_CLIENT_ID: ${GATE_GBRAIN_CLIENT_ID:-}
+      GBRAIN_CLIENT_SECRET: ${GATE_GBRAIN_CLIENT_SECRET:-}
+      # Only for the preparation: the `workspace` key of this binding says that the gate
+      # integration is not from the main workspace. No token is needed for this.
+      GATE_SOURCE_MAPPING_FILE: /etc/app/notion-mapping.yaml
+      # A personal token of the gate workspace: the preparation uses it to create databases at the
+      # workspace's top level.
+      GATE_NOTION_PERSONAL_TOKEN: ${GATE_NOTION_PERSONAL_TOKEN:-}
+
+    configs:
+      - source: notion_mapping
+        target: /etc/app/notion-mapping.yaml
+
+    # The preparation writes the gate workspace's binding, so the directory comes from the host
+    # and is writable.
+    volumes:
+      - type: bind
+        source: ./gate
+        target: /etc/app/gate
+
+    tmpfs:
+      - /run/app:mode=0700,size=1m,uid=1000,gid=1000
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - data
+      - services
+
+  # The `notion` command works with the Notion workspace databases defined by the contract and
+  # with the binding to them (ADR 0048). It is the same image as the App, run as a one-off action
+  # that `up` does not start:
+  #   ./bin/dc run --rm notion build | check | template
+  # It writes only to the `notion/` directory: the binding, the ledger of the built databases and
+  # the formulas. The personal Notion token with which `build` creates the databases comes from
+  # the shell only for the duration of the call.
+  notion:
+    image: ${APP_IMAGE:-personal-management-system-app:local}
+    profiles: [notion]
+    entrypoint: ["/sbin/tini", "--", "node", "dist/src/notion/workspace/workspace-command.js"]
+
+    environment:
+      NOTION_API_TOKEN: ${NOTION_API_TOKEN}
+      NOTION_API_VERSION: ${NOTION_API_VERSION}
+      NOTION_PERSONAL_TOKEN: ${NOTION_PERSONAL_TOKEN:-}
+      NOTION_MAPPING_FILE: /etc/app/notion/mapping.yaml
+
+    # The directory comes from the repository and is writable: the command runs as `node` (1000).
+    volumes:
+      - type: bind
+        source: ./notion
+        target: /etc/app/notion
+
+    networks:
+      - services
+
+  gbrain:
+    image: personal-management-system-gbrain:${GBRAIN_IMAGE_TAG}
+    # Without a limit, json-file grows without bound on the same volume where Postgres lives.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    build:
+      context: ./docker/gbrain
+      dockerfile: Dockerfile
+      args:
+        GBRAIN_REF: ${GBRAIN_REF}
+
+    restart: unless-stopped
+    working_dir: /brain
+
+    environment:
+      <<: *gbrain-environment
+      # The address at which the MCP client sees GBrain: GBrain builds its OAuth addresses from it.
+      GBRAIN_PUBLIC_URL: ${GBRAIN_PUBLIC_URL:-}
+
+    volumes: *gbrain-volumes
+
+    # Every start brings GBrain to the required state before launching the server. `init` is safe
+    # to repeat: it creates only what is missing, rewrites config.json with the same content, and
+    # leaves choices already made (the search mode, the reranker) untouched. The default reranker
+    # is `voyage:rerank-2.5` on the same Voyage key.
+    command:
+      - sh
+      - -c
+      - >-
+        gbrain init --non-interactive --schema-pack gbrain-base-v2
+        && exec gbrain serve --http --surface full --port 3131 --bind 0.0.0.0
+        --public-url "$$GBRAIN_PUBLIC_URL"
+
+    expose:
+      - "3131"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3131/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+    networks:
+      - data
+      - services
+
+  # GBrain maintenance: only the purge phase, once every six hours. It permanently deletes what
+  # was soft-deleted and whose recovery window (72 hours) has passed, and prunes stale service
+  # entries; it calls no models and synthesizes nothing. The rest of the `dream` cycle is a
+  # separate decision. GBrain cycles hold their own locks, so the server and maintenance run
+  # side by side.
+  gbrain-maintenance:
+    image: personal-management-system-gbrain:${GBRAIN_IMAGE_TAG}
+    pull_policy: never
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    restart: unless-stopped
+    working_dir: /brain
+    command:
+      - sh
+      - -c
+      - while true; do gbrain dream --phase purge --once; sleep 21600; done
+
+    environment: *gbrain-environment
+
+    volumes: *gbrain-volumes
+
+    depends_on:
+      gbrain:
+        condition: service_healthy
+
+    networks:
+      - data
+
+configs:
+  postgres_init:
+    file: ./postgres/init.sql
+
+  # The binding of the canonical model to the physical Notion workspace. An installation file, not
+  # a repository file: `notion build` writes it, or it is filled in by hand from the template that
+  # `notion template` produces; it is not committed to git and is not a secret.
+  notion_mapping:
+    file: ./notion/mapping.yaml
+
+networks:
+  data:
+    internal: true
+
+  services:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  gbrain_home:

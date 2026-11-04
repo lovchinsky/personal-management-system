@@ -1,0 +1,100 @@
+# Build context is the repository root, but app/Dockerfile reads only named paths: the
+# package and tsconfig files of app/, app/prisma, app/src, app/plugin, app/test/gate, the
+# knowledge of plugin/ and the contract of the Notion schema. Everything else stays out, so
+# a secret or a backup cannot enter the context under any name. The App image carries
+# app/ and the knowledge of plugin/, both hold the behavior contract as Markdown — no
+# blanket *.md rule here.
+#
+# The last matching line wins. A folder with an exception comes first, the exceptions
+# follow the classes they cut through, and the hard exclusions come last, so no
+# exception can bring back what they name.
+
+.git
+.worktrees
+
+# Tests stay out of every image; the gate image compiles the gate, which lives with the tests.
+app/test
+!app/test/gate
+
+# Of the chat plugin the App image reads only the knowledge it mirrors into the run plugin.
+plugin
+!plugin/skills/personal-management-system/knowledge
+
+# Of contracts/ the build reads two files, for the `notion` command and the gate: the physical
+# Notion schema the databases are built from, and the canonical model the binding skeleton takes
+# its slots from. The running App mirrors the contracts in code and never reads them.
+contracts
+!contracts/notion-workspace.yaml
+!contracts/canonical.yaml
+
+# Data and backups in every form, at any depth.
+**/*.dump
+**/*.dump.*
+**/*.tar
+**/*.tar.*
+**/*.tgz
+**/*.gz
+**/*.bz2
+**/*.xz
+**/*.zst
+**/*.zip
+**/*.7z
+**/*.bak
+**/*.bak.*
+**/*.backup
+**/*.sql
+**/*.sql.*
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+# Source is not data, whatever the name (app/src/platform/queue/queue.sql.ts), and the
+# migrations are what the image runs.
+!app/src/**/*.ts
+!app/prisma/migrations/**/*.sql
+
+# Not read by the build. infra/ is operator files, backups and per-installation data.
+infra
+docs
+app/tools
+README.md
+LICENSE
+**/node_modules
+**/dist
+**/dist-gate
+**/coverage
+**/.nyc_output
+app/src/generated
+
+# Local tools and personal agent files
+**/.claude
+**/.idea
+**/.vscode
+**/.DS_Store
+**/CLAUDE.md
+**/CLAUDE.local.md
+.mcp.json
+
+# Environment and credentials. .env.example goes too: no build reads one.
+**/.env
+**/.env.*
+**/*.env
+**/.envrc
+**/.direnv
+**/.npmrc
+**/.netrc
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/id_rsa
+**/id_dsa
+**/id_ecdsa
+**/id_ed25519
+**/.secrets
+**/.credentials
+**/secrets
+
+# Run logs, transcripts, gate output
+**/*.log
+**/*.jsonl
+**/gate-*.json*
