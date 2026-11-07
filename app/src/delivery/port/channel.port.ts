@@ -76,9 +76,11 @@ export const strictProposalLineSchema = z.strictObject(proposalLineShape);
  * The policy names the five slots: what was noticed, why it matters, what context changes the
  * assessment, what is already prepared, what minimal decision is needed.
  *
- * `link` is required: a channel message is not a source of state, and the full content lives in
- * Notion (`INV-024`). Two copies of the same nudge point to the same object, which is why
- * at-least-once on the wire costs only attention.
+ * `link` points to the Notion object the message is about: a channel message is not a source of
+ * state, and the full content lives in Notion (`INV-024`). Two copies of the same nudge point to
+ * the same object, which is why at-least-once on the wire costs only attention. A notice about
+ * the system itself (a client connected, a review did not take place) is about no Notion object
+ * and has no link. The model's packets always have one: `queue_notification` requires it.
  */
 export const outboundMessageSchema = z.object({
   noticed: z.string().min(1),
@@ -93,7 +95,10 @@ export const outboundMessageSchema = z.object({
   // The link is a URL, not a string that looks like one. The protocol is restricted deliberately:
   // `javascript:` is also a valid URL, and it stays out of `href` only because it is rejected
   // here, at the entrance to the queue, not at render time.
-  link: z.url({ protocol: /^https$/ }).max(300),
+  link: z
+    .url({ protocol: /^https$/ })
+    .max(300)
+    .optional(),
   /**
    * The proposals the packet asks for a decision on (ADR 0039). The renderer does not shorten them:
    * each proposal's line and buttons arrive whole. The packet reports the rest of the open
@@ -147,7 +152,7 @@ export interface NotificationChannel {
   /**
    * Returns the number of characters by which the packet exceeds the channel's message length; 0
    * means it fits. `noticed`, `why_it_matters`, the proposals with room reserved for their fates,
-   * the ask and the link must fit whole; the renderer drops `context` and `prepared` when there is
+   * the ask and the link, if there is one, must fit whole; the renderer drops `context` and `prepared` when there is
    * not enough room for them. A packet that does not fit does not reach the queue.
    */
   excess(message: OutboundMessage): number;

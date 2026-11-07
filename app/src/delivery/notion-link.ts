@@ -1,5 +1,5 @@
-/** The Notion workspace: where to send the person when the message is not about any page. */
-export const WORKSPACE_LINK = 'https://www.notion.so/';
+/** The address every link to a page of the workspace starts with. */
+const WORKSPACE_LINK = 'https://www.notion.so/';
 
 /**
  * Builds a link to a page from its id. A system message does not read the page, so the link has

@@ -30,7 +30,6 @@ describe('the notice about a review that did not take place', () => {
       whyItMatters: 'Застояні записи Inbox, очікування й ризики лишилися без перегляду.',
       context: 'Причина: the period ended before the review was done',
       ask: 'Якщо він потрібен, напиши мені в чаті Claude: «зроби тижневий огляд».',
-      link: 'https://www.notion.so/',
     });
   });
 
@@ -102,7 +101,6 @@ describe('the notice about a review that did not take place', () => {
       whyItMatters: 'Stale Inbox items, waiting-for items and risks went unreviewed.',
       context: 'Reason: the period ended before the review was done',
       ask: 'If you need it, ask me in a Claude chat: “do a weekly review”.',
-      link: 'https://www.notion.so/',
     });
   });
 });

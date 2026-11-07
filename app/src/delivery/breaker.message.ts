@@ -1,7 +1,7 @@
 import { BreakerOpening } from '../runs/breaker-notice';
 import type { NoticeTexts } from '../texts/texts';
 import { Delivery } from './delivery.schema';
-import { pageLink, WORKSPACE_LINK } from './notion-link';
+import { pageLink } from './notion-link';
 
 /** How much of the failure reason the notice shows: the person finds the rest in the run trace. */
 const REASON_CHARS = 280;
@@ -27,7 +27,7 @@ export function breakerDelivery(opening: BreakerOpening, texts: NoticeTexts['bre
       ...(reason ? { context: texts.reason(reason.slice(0, REASON_CHARS)) } : {}),
       ask: texts.ask,
       // The run that opened the breaker might not name a page.
-      link: opening.pageId === null ? WORKSPACE_LINK : pageLink(opening.pageId),
+      ...(opening.pageId === null ? {} : { link: pageLink(opening.pageId) }),
     },
   };
 }

@@ -1,14 +1,17 @@
 import { renderMessage } from '../../src/delivery/channels/telegram/telegram.renderer';
+import { deliveryWireSchema } from '../../src/delivery/delivery.wire';
 import { outboundMessageSchema } from '../../src/delivery/port/channel.port';
 import { textsOf } from '../../src/texts/texts';
 
 /**
- * `INV-024` A channel message is not a source of state. The full content lives in Notion; the
- * message contains a link.
+ * `INV-024` A channel message is not a source of state. The full content lives in Notion; a
+ * message about a Notion object contains a link to it.
  *
- * Verifiability rests on the field being mandatory, not on the author's habit: a packet without a
- * link fails the schema, so it cannot become a queue row. A mandatory link is what makes
- * at-least-once on the wire acceptable, because two copies point to the same object.
+ * Verifiability rests on the field being mandatory where the message is about Notion content, not
+ * on the author's habit: a packet the model queues without a link fails the wire schema, so it
+ * cannot become a queue row. A link is what makes at-least-once on the wire acceptable, because
+ * two copies point to the same object. A notice the App writes about the system itself (a client
+ * connected, a review did not take place) is about no Notion object and has no link.
  */
 const WITHOUT_LINK = {
   noticed: 'Задача стоїть у Waiting For одинадцять днів.',
@@ -17,8 +20,34 @@ const WITHOUT_LINK = {
 };
 
 describe('INV-024', () => {
-  it('a message without a link fails the schema', () => {
-    expect(outboundMessageSchema.safeParse(WITHOUT_LINK).success).toBe(false);
+  it('a packet the model queues without a link fails the wire schema', () => {
+    const wire = {
+      channel: 'telegram',
+      message: {
+        noticed: WITHOUT_LINK.noticed,
+        why_it_matters: WITHOUT_LINK.whyItMatters,
+        ask: WITHOUT_LINK.ask,
+      },
+    };
+
+    expect(deliveryWireSchema.safeParse(wire).success).toBe(false);
+    expect(
+      deliveryWireSchema.safeParse({
+        ...wire,
+        message: { ...wire.message, link: 'https://notion.so/page-1' },
+      }).success,
+    ).toBe(true);
+  });
+
+  /** A notice about the system has no Notion object to point to, and no empty caption stands in. */
+  it('a notice about the system has no link, and its render has no caption', () => {
+    expect(outboundMessageSchema.safeParse(WITHOUT_LINK).success).toBe(true);
+
+    const html = renderMessage(WITHOUT_LINK, textsOf('uk').telegram);
+
+    expect(html).toContain(WITHOUT_LINK.ask);
+    expect(html).not.toContain('<a href');
+    expect(html).not.toContain(textsOf('uk').telegram.openInNotion);
   });
 
   it('an empty link fails the schema', () => {

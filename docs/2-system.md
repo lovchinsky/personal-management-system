@@ -1815,7 +1815,9 @@ Quiet hours are implemented with the “not before” field that the delivery qu
 
 `noticed`, `why_it_matters`, the proposals with room reserved for their fates, `ask` and the link must fit into the channel message in full: a packet that does not fit (`excess`) does not get into the queue, and the refusal says by how many characters it is too long. The renderer itself drops `context` and `prepared` when there is not enough room for them. A packet is never split into several messages — the buttons belong to a single message.
 
-`INV-024` A channel message is not a source of state. The full content lives in Notion; the message contains a link.
+`INV-024` A channel message is not a source of state. The full content lives in Notion; a message about a Notion object contains a link to it.
+
+A notice the App writes about the system itself (a client connected, a review did not take place) is about no Notion object and has no link; the render then ends with the ask. Everything the model queues is about Notion content, so `queue_notification` requires the link ([ADR 0051](decisions/0051-notice-about-the-system-has-no-link.md)).
 
 The Telegram Bot API has no idempotency key, so the gap between `sendMessage` and recording `sent` in the queue cannot be closed atomically. Delivery is **at-least-once**: after a crash in this gap it is retried, and one extra message is acceptable — by `INV-024` both copies point to the same object and the same proposal, and pressing again does nothing. [ADR 0007](decisions/0007-telegram-first-delivery-adapter.md) explains why delivery is not at-most-once.
 

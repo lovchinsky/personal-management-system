@@ -27,11 +27,11 @@ describe('open breaker notice', () => {
     expect(deliverySchema.safeParse(breakerOf(OPENING)).success).toBe(true);
   });
 
-  it('links to the page the run was about, or to the workspace without one', () => {
+  it('links to the page the run was about, and has no link without one', () => {
     expect(breakerOf(OPENING).message.link).toBe(
       'https://www.notion.so/1f2e3d4c5b6a49788a9b0c1d2e3f4a5b',
     );
-    expect(breakerOf({ ...OPENING, pageId: null }).message.link).toBe('https://www.notion.so/');
+    expect(breakerOf({ ...OPENING, pageId: null }).message.link).toBeUndefined();
   });
 
   it('includes the failure reason and stays within the limit', () => {

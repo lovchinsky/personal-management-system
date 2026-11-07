@@ -33,7 +33,7 @@ export function chatDeliveryKey(
     message.context ?? null,
     message.prepared ?? null,
     message.ask,
-    message.link,
+    message.link ?? null,
     (message.proposals ?? []).map((proposal) => [proposal.pendingActionId, proposal.line]),
   ]);
 

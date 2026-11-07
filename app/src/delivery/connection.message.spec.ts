@@ -1,5 +1,6 @@
 import type { ConnectedClient } from '../mcp/oauth/client-notice';
 import { textsOf } from '../texts/texts';
+import { renderMessage } from './channels/telegram/telegram.renderer';
 import { connectionDelivery } from './connection.message';
 import { Delivery, deliverySchema } from './delivery.schema';
 
@@ -17,6 +18,16 @@ describe('client connection notice', () => {
     expect(deliverySchema.safeParse(delivery).success).toBe(true);
     expect(delivery.message.noticed).toContain('Claude');
     expect(delivery.message.noticed).toContain('claude.ai');
+  });
+
+  /** The notice is about no Notion page, so it has no link and the render has no caption. */
+  it('has no link, and tells the person what to do if it was not them', () => {
+    const { message } = connectionOf(CLIENT);
+
+    expect(message.link).toBeUndefined();
+    expect(message.ask).toContain('пароль власника');
+    expect(message.ask).toContain('RUNBOOK');
+    expect(renderMessage(message, textsOf('uk').telegram)).not.toContain('<a href');
   });
 
   /**

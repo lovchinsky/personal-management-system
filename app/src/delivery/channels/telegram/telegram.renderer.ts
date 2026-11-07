@@ -21,7 +21,7 @@ const ELLIPSIS = '…\n\n';
 /**
  * The promise “the result is not longer than the limit” is a theorem, not a hope.
  *
- * The fixed part — the proposals, the ask and the link — is never shortened, because without it
+ * The fixed part — the proposals, the ask and the link, if there is one — is never shortened, because without it
  * the message stops being a decision. The renderer reserves `OUTCOME_UNITS` in advance for the
  * fate of each proposal, so a message rewritten with fates fits too, and the packet's body does
  * not change from edit to edit. The renderer also reserves `moreUnitsOf` for the line about the
@@ -33,7 +33,8 @@ const ELLIPSIS = '…\n\n';
  * escaped, and the ellipsis with its blank line 3 more. Escaping lengthens the worst case
  * sixfold (`"` → `&quot;`). The ask and the link are 300 units each, so the worst tail is
  * 6 × 600 + 23 + 40 + 3 = 3666, which leaves more than 400 units of room below the limit even
- * when the text consists of nothing but quotation marks.
+ * when the text consists of nothing but quotation marks. A message without a link has a shorter
+ * tail, so the same bound holds for it.
  *
  * With proposals the schema does not keep the worst case within the limit, so `excessOf` measures
  * it when a packet enters the queue, together with `noticed` and `why_it_matters`. A packet that
@@ -95,7 +96,7 @@ export function outcomeMark(outcome: string): string {
 
 /**
  * Renders the fixed part: the numbered proposal lines with the fates of the settled ones, the line
- * about the rest, the ask and the link.
+ * about the rest, the ask and the link, if the message has one.
  */
 function fixedPart(
   message: OutboundMessage,
@@ -113,7 +114,11 @@ function fixedPart(
     lines.push(escapeHtml(texts.moreWaiting(message.moreProposals)));
   }
 
-  const tail = `<b>${escapeHtml(message.ask)}</b>\n<a href="${escapeHtml(message.link)}">${escapeHtml(texts.openInNotion)}</a>`;
+  const ask = `<b>${escapeHtml(message.ask)}</b>`;
+  const tail =
+    message.link === undefined
+      ? ask
+      : `${ask}\n<a href="${escapeHtml(message.link)}">${escapeHtml(texts.openInNotion)}</a>`;
 
   return lines.length === 0 ? tail : `${lines.join('\n')}\n\n${tail}`;
 }
@@ -163,8 +168,8 @@ export function excessOf(
  * Renders a decision packet in Telegram's HTML subset; `settled` holds the fates of the settled
  * proposals.
  *
- * Shortening happens **on the context side**: the proposals, the ask and the link are always
- * kept, because without them the message stops being a decision and becomes noise. A packet is
+ * Shortening happens **on the context side**: the proposals, the ask and the link, if there is
+ * one, are always kept, because without them the message stops being a decision and becomes noise. A packet is
  * never split into several messages, because the buttons belong to one message.
  */
 export function renderMessage(

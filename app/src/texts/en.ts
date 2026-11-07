@@ -68,10 +68,10 @@ export const en = {
     connection: {
       noticed: (client, host) =>
         `“${client}” (${host}) has connected to Personal Management System.`,
-      whyItMatters:
-        "It can read the state of your system and act on your behalf in chat. If this wasn't you, " +
-        'someone knows the owner passphrase: change it and revoke the tokens.',
-      ask: 'Was this you?',
+      whyItMatters: 'It can read the state of your system and act on your behalf in chat.',
+      ask:
+        'If this was you, do nothing. If not, someone knows the owner passphrase: change it and ' +
+        'revoke the tokens (infra/RUNBOOK.md § “App MCP and chat”).',
     },
     reviewFailure: {
       noticed: (mode, period) => `The ${REVIEWS[mode].name} for ${period} did not take place.`,

@@ -13,7 +13,7 @@ export interface Notice {
   readonly whyItMatters: string;
   readonly ask: string;
   /** A link to the object: artifacts include the id, the text for the person does not. */
-  readonly link: string;
+  readonly link?: string;
   /** Context and the prepared part are optional parts of the packet, also text for the person. */
   readonly context?: string;
   readonly prepared?: string;
@@ -29,7 +29,7 @@ const noticeSchema = z.looseObject({
   noticed: z.string(),
   whyItMatters: z.string(),
   ask: z.string(),
-  link: z.string(),
+  link: z.string().optional(),
   context: z.string().optional(),
   prepared: z.string().optional(),
   proposals: z.array(z.looseObject({ pendingActionId: z.string(), line: z.string() })).optional(),
@@ -55,7 +55,7 @@ export function noticeFrom(payload: unknown): Notice {
     noticed,
     whyItMatters,
     ask,
-    link,
+    ...(link === undefined ? {} : { link }),
     ...(context === undefined ? {} : { context }),
     ...(prepared === undefined ? {} : { prepared }),
     ...(proposals === undefined

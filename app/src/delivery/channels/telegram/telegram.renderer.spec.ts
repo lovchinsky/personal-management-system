@@ -55,6 +55,16 @@ describe('decision packet render', () => {
     expect(html).toContain(PACKET.link);
   });
 
+  it('ends with the ask alone when the message has no link', () => {
+    const withoutLink: OutboundMessage = { ...PACKET, link: undefined };
+    const html = renderMessage(withoutLink, UK);
+
+    expect(html).toContain(withoutLink.ask);
+    expect(html).not.toContain('<a href');
+    expect(html).not.toContain(UK.openInNotion);
+    expect(html.endsWith('</b>')).toBe(true);
+  });
+
   it('escapes markup instead of breaking the HTML', () => {
     const html = renderMessage({ ...PACKET, noticed: 'a < b & c > d' }, UK);
 

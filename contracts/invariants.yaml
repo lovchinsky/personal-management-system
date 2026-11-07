@@ -246,7 +246,7 @@ invariants:
     notes: "Ci-contract against a fake Telegram transport. Ordering against the real Bot API is integration. The ci-contract check covers only the ordering: recording before the ack. Editing the message to show the result is not part of the statement: it is covered by `app/src/delivery/delivery.service.spec.ts` and the queue's integration lane (the `external_id` of the delivery row)."
 
   - id: INV-024
-    statement: "A channel message is not a source of state. The full content lives in Notion; the message contains a link."
+    statement: "A channel message is not a source of state. The full content lives in Notion; a message about a Notion object contains a link to it."
     origin:
       - docs/2-system.md § Telegram — channel adapter
     verifiable_by: ci-contract

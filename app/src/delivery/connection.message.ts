@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { ConnectedClient } from '../mcp/oauth/client-notice';
 import type { NoticeTexts } from '../texts/texts';
 import { Delivery } from './delivery.schema';
-import { WORKSPACE_LINK } from './notion-link';
 
 /**
  * Builds the notice that a client has connected to the App MCP.
@@ -22,8 +21,6 @@ export function connectionDelivery(
       noticed: texts.noticed(client.name, client.redirectHost),
       whyItMatters: texts.whyItMatters,
       ask: texts.ask,
-      // This notice is not about any Notion page.
-      link: WORKSPACE_LINK,
     },
   };
 }

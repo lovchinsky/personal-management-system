@@ -101,10 +101,10 @@ export const uk = {
     },
     connection: {
       noticed: (client, host) => `До Personal Management System підключився «${client}» (${host}).`,
-      whyItMatters:
-        'Через нього можна читати стан системи й діяти від твого імені в чаті. Якщо це не ти — ' +
-        'хтось знає пароль власника: зміни його й відклич токени.',
-      ask: 'Це ти?',
+      whyItMatters: 'Через нього можна читати стан системи й діяти від твого імені в чаті.',
+      ask:
+        'Якщо це був ти — нічого не роби. Якщо ні, хтось знає пароль власника: зміни його й ' +
+        'відклич токени (infra/RUNBOOK.md § “App MCP and chat”).',
     },
     reviewFailure: {
       noticed: (mode, period) => `${REVIEWS[mode].name} за ${period} не відбувся.`,

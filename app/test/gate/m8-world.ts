@@ -476,7 +476,7 @@ export class M8World extends M6World implements M8Port {
           noticed: message.noticed,
           whyItMatters: message.whyItMatters,
           ask: message.ask,
-          link: message.link,
+          ...(message.link === undefined ? {} : { link: message.link }),
           ...(message.context === undefined ? {} : { context: message.context }),
           ...(message.prepared === undefined ? {} : { prepared: message.prepared }),
           ...(message.proposals === undefined ? {} : { proposals: message.proposals }),

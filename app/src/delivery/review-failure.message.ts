@@ -5,7 +5,6 @@ import type { Language } from '../texts/language';
 import { spokenDay, spokenDays } from '../texts/spoken-dates';
 import type { NoticeTexts } from '../texts/texts';
 import { Delivery } from './delivery.schema';
-import { WORKSPACE_LINK } from './notion-link';
 
 /** How much of the failure reason the notice shows: the person finds the rest in the run trace. */
 const REASON_CHARS = 280;
@@ -48,8 +47,6 @@ export function reviewFailureDelivery(
       whyItMatters: texts.whyItMatters(failure.mode),
       ...(reason ? { context: texts.reason(reason.slice(0, REASON_CHARS)) } : {}),
       ask: texts.ask(failure.mode),
-      // A review has no page in Notion.
-      link: WORKSPACE_LINK,
     },
   };
 }

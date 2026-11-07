@@ -45,6 +45,15 @@ describe('delivery key', () => {
       expect(chatDeliveryKey(thread)).not.toBe(chatDeliveryKey(PACKET));
     });
 
+    it('a packet with a link and the same packet without one are different packets', () => {
+      const withoutLink: typeof PACKET = {
+        ...PACKET,
+        message: { ...PACKET.message, link: undefined },
+      };
+
+      expect(chatDeliveryKey(withoutLink)).not.toBe(chatDeliveryKey(PACKET));
+    });
+
     it('a different proposal in the packet makes a different packet', () => {
       const proposing = (id: string): typeof PACKET => ({
         ...PACKET,
