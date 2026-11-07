@@ -307,21 +307,27 @@ export function repoFile(path: string): string {
 }
 
 /** A service mount: the short form as a string, or the long form with a source and a target. */
-const composeMount = z.union([z.string(), z.object({ source: z.string(), target: z.string() })]);
+const composeMount = z.union([
+  z.string(),
+  z.object({ source: z.string(), target: z.string(), read_only: z.boolean().optional() }),
+]);
 
 /**
- * The Compose file in the part the checks read: variables, build context, profiles, entry point and
- * service mounts, and the `configs` files.
+ * The Compose file in the part the checks read: image, variables, build context, profiles, entry
+ * point and command, service mounts and `configs` mounts, and the `configs` files.
  */
 const composeSchema = z.object({
   services: z.record(
     z.string(),
     z.object({
+      image: z.string().optional(),
       environment: z.record(z.string(), z.string()).optional(),
       build: z.object({ context: z.string().optional() }).optional(),
       profiles: z.array(z.string()).optional(),
       entrypoint: z.array(z.string()).optional(),
+      command: z.array(z.string()).optional(),
       volumes: z.array(composeMount).optional(),
+      configs: z.array(z.object({ source: z.string(), target: z.string() })).optional(),
     }),
   ),
   configs: z.record(z.string(), z.object({ file: z.string() })).optional(),

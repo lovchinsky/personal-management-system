@@ -90,22 +90,36 @@ services:
         max-size: "10m"
         max-file: "3"
 
+    # `postgres/install-dictionaries.sh` installs the installation's search dictionaries and then
+    # runs the image's own entry point with the image's command (ADR 0050).
+    entrypoint: ["sh", "/usr/local/bin/install-dictionaries.sh"]
+    command: ["postgres"]
+
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: postgres
-      # `postgres/init.sql` reads the passwords of the App and GBrain roles.
+      # `postgres/init.sql` reads the passwords of the App and GBrain roles and the search language,
+      # with the same default as for GBrain.
       APP_DB_PASSWORD: ${APP_DB_PASSWORD}
       GBRAIN_DB_PASSWORD: ${GBRAIN_DB_PASSWORD}
+      GBRAIN_FTS_LANGUAGE: ${GBRAIN_FTS_LANGUAGE:-english}
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # The installation's hunspell dictionaries, read by the entry point above.
+      - type: bind
+        source: ./postgres/dictionaries
+        target: /etc/postgresql/dictionaries
+        read_only: true
 
-    # Roles, databases and extensions. The image runs the file by itself when the volume is empty;
-    # it is rerun by hand (the file itself says when and how).
+    # Roles, databases, extensions and GBrain's search configuration: the image runs `init.sql` by
+    # itself when the volume is empty, and it is rerun by hand (the file itself says when and how).
     configs:
       - source: postgres_init
         target: /docker-entrypoint-initdb.d/init.sql
+      - source: postgres_install_dictionaries
+        target: /usr/local/bin/install-dictionaries.sh
 
     # Over TCP, not the socket: while the image runs `init.sql`, the temporary server listens only
     # on the socket, and a check through the socket would report a database without roles as
@@ -360,6 +374,9 @@ services:
 configs:
   postgres_init:
     file: ./postgres/init.sql
+
+  postgres_install_dictionaries:
+    file: ./postgres/install-dictionaries.sh
 
   # The binding of the canonical model to the physical Notion workspace. An installation file, not
   # a repository file: `notion build` writes it, or it is filled in by hand from the template that

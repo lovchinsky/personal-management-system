@@ -289,7 +289,7 @@ PostgreSQL
 
 `app_db` and `gbrain_db` are separate persistence boundaries, despite the shared cluster.
 
-The roles and databases are created by `infra/postgres/init.sql`: the Postgres image runs it automatically at the first start on an empty volume. On every start the App itself brings the `app_db` schema up to date with its own image ([Startup and service dependencies](#startup-and-service-dependencies)); GBrain manages `gbrain_db` ([Runtime baseline GBrain](#runtime-baseline-gbrain)).
+The roles and databases are created by `infra/postgres/init.sql`, together with GBrain's search configuration: the Postgres image runs it automatically at the first start on an empty volume. On every start the App itself brings the `app_db` schema up to date with its own image ([Startup and service dependencies](#startup-and-service-dependencies)); GBrain manages `gbrain_db` ([Runtime baseline GBrain](#runtime-baseline-gbrain)).
 
 ### MVP scope
 
@@ -861,6 +861,8 @@ Baseline FTS:
 GBRAIN_FTS_LANGUAGE=english
 ```
 
+The full-text search language is a configuration Postgres ships or one that `infra/postgres/init.sql` builds from a hunspell dictionary of the installation, before GBrain's migrations need it ([ADR 0050](decisions/0050-search-language.md)). The language and its dictionary are the configuration of the stored data: a change of either is a reindex ([RUNBOOK §19](../infra/RUNBOOK.md#19-changing-the-fts-language)).
+
 MCP server surface:
 
 ```text
@@ -922,7 +924,9 @@ The `~/projects/` directory in the layout is an example: the clone and `gbrain-r
 │   │   ├── RUNBOOK.md
 │   │   ├── GATE.md
 │   │   ├── postgres/
-│   │   │   └── init.sql
+│   │   │   ├── init.sql
+│   │   │   ├── install-dictionaries.sh
+│   │   │   └── dictionaries/
 │   │   ├── docker/
 │   │   │   └── gbrain/
 │   │   │       └── Dockerfile

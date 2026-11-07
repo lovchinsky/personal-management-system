@@ -23,7 +23,7 @@ Commands run from this directory.
 | Command | What it checks |
 |---|---|
 | `npm test` | types, unit and contract tests, and the tests of the gate code: `src/**/*.spec.ts`, `test/contract/`, `test/gate/**/*.spec.ts` |
-| `npm run test:integration` | repositories, queues and capabilities against a real Postgres: `test/integration/` |
+| `npm run test:integration` | repositories, queues and capabilities against a real Postgres, and the search dictionary of the database container: `test/integration/` |
 | `npm run test:e2e` | the whole application over HTTP: `test/*.e2e-spec.ts` |
 | `npm run lint` | code rules (check only; `npm run lint:fix` fixes them) |
 | `npm run format:check` | formatting (`npm run format` fixes it) |
@@ -40,6 +40,8 @@ npm run db:test -- down
 ```
 
 The database container (`infra/ops/test-db.sh`) runs outside the stack, on loopback. Its password is in the repository and is not a secret: the container keeps no data and is deleted together with its volume.
+
+`test/integration/postgres-dictionaries.spec.ts` starts one more container of its own, with the image, entry point and mounts of the stack's `postgres` service, and removes it together with its volume at the end ([ADR 0050](../docs/decisions/0050-search-language.md)).
 
 The integration lane allows a test up to 30 seconds (`testTimeout` in `test/jest-integration.json`): its longest tests (a week of scheduler ticks, evaluation windows, the run budget) take up to two seconds, and an image build or a gate run alongside slows them down several-fold. Jest does not stop a test that has exceeded the limit: its unfinished work would land in the database that the next tests use.
 

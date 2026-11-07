@@ -66,6 +66,11 @@ id_ed25519
 infra/notion/*
 !infra/notion/.gitkeep
 
+# Per-installation search dictionaries (ADR 0050): hunspell files the owner supplies, under the
+# dictionary's own license. The folder itself ships, so Compose mounts it in place.
+infra/postgres/dictionaries/*
+!infra/postgres/dictionaries/.gitkeep
+
 # Gate environment: the binding, ledger and formulas written by `bin/gate prepare`, run transcripts.
 infra/gate/
 

@@ -660,7 +660,7 @@ invariants:
     notes: "A process invariant about how a change is made, not a property of any state. A guard test can detect that the dimension changed, but not that a procedure was followed."
 
   - id: INV-071
-    statement: "Changing the FTS language requires a reindex and retrieval validation."
+    statement: "Changing the FTS language or its dictionary requires a reindex and retrieval validation."
     origin:
       - docs/2-system.md § Runtime baseline GBrain
     verifiable_by: manual

@@ -18,7 +18,9 @@ The configuration lives in these files, not in the text of the runbook:
 | [`compose.yaml`](./compose.yaml) | the base Compose file: `postgres`, `app`, `notion`, `gbrain`, `gbrain-maintenance`, `gate`, networks and volumes |
 | [`compose.local.yaml`](./compose.local.yaml) | the local machine's overlay: ports on loopback |
 | [`compose.prod.yaml`](./compose.prod.yaml) | the server's overlay: Caddy, GBrain's trust-proxy setting and GBrain's address taken from `GBRAIN_DOMAIN` |
-| [`postgres/init.sql`](./postgres/init.sql) | roles, databases, extensions and the RLS trigger |
+| [`postgres/init.sql`](./postgres/init.sql) | roles, databases, extensions, the RLS trigger and GBrain's search configuration |
+| [`postgres/install-dictionaries.sh`](./postgres/install-dictionaries.sh) | the installation of the search dictionary into Postgres on every start |
+| [`postgres/dictionaries/`](./postgres/dictionaries) | the installation's search dictionary, when the search language needs one ([§1](#search-dictionary)) |
 | [`notion/`](./notion) | the installation's Notion files: the binding, the ledger of built databases, formulas ([§3](#3-notion-workspace-and-binding)) |
 | [`docker/gbrain/Dockerfile`](./docker/gbrain/Dockerfile) | the GBrain build from the pinned `GBRAIN_REF` |
 | [`caddy/Caddyfile`](./caddy/Caddyfile) | HTTPS for `APP_DOMAIN` and `GBRAIN_DOMAIN` |
@@ -74,6 +76,12 @@ A model run is a separate process that takes about 1 GiB of memory; one run is a
 
 `gbrain-repo` is a separate git repository with GBrain's knowledge in Markdown. GBrain mounts it as `/brain` and works in it as the user with uid 1000, so the directory is a git repository that uid 1000 can write to. GBrain accepts a repository without committed files (empty, or with nothing but an empty commit) as a source only with `--force` ([§5](#5-gbrain-initial-import)). A remote repository that the owner chooses provides the copy of the knowledge off the machine ([§12](#12-backup-gbrain-repo)); the knowledge belongs to the owner, so that repository is private.
 
+#### Search dictionary
+
+GBrain's keyword search works in the language that `GBRAIN_FTS_LANGUAGE` names ([§2](#2-environment)). Postgres supports arabic, armenian, basque, catalan, danish, dutch, english, finnish, french, german, greek, hindi, hungarian, indonesian, irish, italian, lithuanian, nepali, norwegian, portuguese, romanian, russian, serbian, spanish, swedish, tamil, turkish and yiddish, and such a language needs nothing else.
+
+Another language, such as Ukrainian, Polish or Czech, needs a hunspell dictionary of that language: the files `<name>.dic` and `<name>.aff` as the dictionary comes, and optionally a stop-word list `<name>.stop`, one word per line. They go into [`postgres/dictionaries/`](./postgres/dictionaries), and `GBRAIN_FTS_LANGUAGE` is their name in lowercase: `uk_UA.dic` and `uk_UA.aff` give `uk_ua`. Git does not carry the dictionary. A dictionary comes under its own license, which may limit its use: check it before you install the dictionary. Other files in the directory, such as that license, stay where they are.
+
 ### 2. Environment
 
 The environment file is a copy of the template with permissions `0600`; it is kept out of git. On the local machine it is `.env.local`, on the server `.env.prod` (the commands below use `.env.local`):
@@ -110,6 +118,8 @@ openssl rand -base64 32
 **Values from other steps:** `CLAUDE_CODE_OAUTH_TOKEN` ([§2.1](#21-claude-subscription-token)), `NOTION_API_TOKEN` ([§2.2](#22-notion-integration)), `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALLOWED_CHAT_ID` ([§2.3](#23-telegram-bot)), `VOYAGE_API_KEY` ([§1](#1-requirements)), `APP_IMAGE` ([§2.4](#24-app-image)), `GBRAIN_CLIENT_ID` and `GBRAIN_CLIENT_SECRET` ([§5](#5-gbrain-initial-import)). Put `VOYAGE_API_KEY` in the file before the first GBrain start: without it the first start turns the reranker off, and `gbrain sync` stops ([§25](#25-troubleshooting)).
 
 **The path to the knowledge repository** is `GBRAIN_REPO_PATH`, absolute or relative. Compose resolves a relative path from `infra/`: `../../gbrain-repo` is the `gbrain-repo` directory next to the clone.
+
+**The search language** is `GBRAIN_FTS_LANGUAGE`: a language Postgres supports or the name of the installation's dictionary ([§1](#search-dictionary)); the template has `english`. Choose it before the first start: it is the configuration of the stored data, and a change afterwards means reindexing ([§19](#19-changing-the-fts-language)).
 
 **What stays as in the template.** `GBRAIN_REF` and `GBRAIN_IMAGE_TAG` are the pinned GBrain baseline, the same for both environments. `REVIEW_*=off`: reviews are turned on one at a time after the first deployment ([§8](#8-runner-and-reviews)). `RUNNER_ENABLED=false` until [§8](#8-runner-and-reviews). The owner's settings (`APP_TIMEZONE`, `APP_LANGUAGE`, `APP_OWNER_GENDER`, `APP_ASSISTANT_NAME`, `APP_ASSISTANT_GENDER`) are described in the template itself. The App picks up a changed value after `./bin/dc up -d app`; change the assistant name together with the names of the integration ([§2.2](#22-notion-integration)) and the bot ([§2.3](#23-telegram-bot)).
 
@@ -316,7 +326,7 @@ After the schema changes in Notion, check the binding again: starting the App ca
 
 ### 4. Startup
 
-Before the first start, these must be in place: the environment file ([§2](#2-environment)) with `VOYAGE_API_KEY`, the App image ([§2.4](#24-app-image)), the binding ([§3](#3-notion-workspace-and-binding)) and the knowledge repository ([§1](#1-requirements)). On the server, the Caddy config must be in place too:
+Before the first start, these must be in place: the environment file ([§2](#2-environment)) with `VOYAGE_API_KEY`, the App image ([§2.4](#24-app-image)), the binding ([§3](#3-notion-workspace-and-binding)), the knowledge repository ([§1](#1-requirements)) and, for a language Postgres does not support, its dictionary ([§1](#search-dictionary)). On the server, the Caddy config must be in place too:
 
 ```bash
 ./bin/dcp run --rm -T --no-deps caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
@@ -336,7 +346,7 @@ Before the first start, these must be in place: the environment file ([§2](#2-e
 
 What happens at the start:
 
-- **Postgres** on an empty volume runs `postgres/init.sql`: the roles `app_user` and `gbrain_user`, the databases `app_db` and `gbrain_db`, the extensions and the RLS trigger. The file is run again by hand ([§13](#13-restore-app_db), [§21](#21-changing-database-passwords));
+- **Postgres** installs the dictionary from `postgres/dictionaries/` on every start, and on an empty volume runs `postgres/init.sql`: the roles `app_user` and `gbrain_user`, the databases `app_db` and `gbrain_db`, the extensions, the RLS trigger and, for a dictionary language, its search configuration. A language without its dictionary stops `init.sql` before it creates anything ([§25](#gbrain-search-language)). The file is run again by hand ([§13](#13-restore-app_db), [§19](#19-changing-the-fts-language), [§21](#21-changing-database-passwords));
 - The **App** applies its migrations (`prisma migrate deploy`) and then starts. Migrations run on every start, so the database is brought up to the image's schema; a failed migration stops the container;
 - **GBrain** runs `gbrain init --non-interactive --schema-pack gbrain-base-v2` and then starts the server. `init` is safe to repeat: it creates only what is missing and leaves choices already made untouched. The embedding model and the vector width for every GBrain process are set by `GBRAIN_EMBEDDING_MODEL` and `GBRAIN_EMBEDDING_DIMENSIONS` (by default `voyage:voyage-4` and 1024); the reranker is `voyage:rerank-2.5` by default, on the same Voyage key;
 - **`gbrain-maintenance`** runs the `purge` phase once every six hours: it permanently deletes what was soft-deleted and whose recovery window (72 hours) has passed, and removes stale service records. It calls no models and synthesizes nothing;
@@ -606,6 +616,18 @@ curl -fsS https://<GBRAIN_DOMAIN>/health
 ./bin/dc exec gbrain gbrain stats
 ```
 
+**Search language.** `<LANGUAGE>` is the value of `GBRAIN_FTS_LANGUAGE`, and `<TEXT>` is two forms of one word in that language, such as `running runs` in English. Both forms give one lexeme, the base form of the word:
+
+```bash
+./bin/dc exec -T postgres psql -U postgres -d gbrain_db -Atc "SELECT to_tsvector('<LANGUAGE>', '<TEXT>')"
+```
+
+For a dictionary language, the log of the start names the installed files:
+
+```bash
+./bin/dc logs postgres | grep install-dictionaries
+```
+
 **Notion integration.** At startup the App asks Notion who it is and writes the answer to the log:
 
 ```bash
@@ -702,6 +724,7 @@ The producer immediately schedules the current occurrence of every enabled revie
 | clone of `personal-management-system` | infrastructure and config | Git |
 | environment file (`.env.prod`, `.env.local`) | the secrets that unlock the rest | encrypted copy off the machine, outside Git |
 | `infra/notion/` | binding to the workspace and the ledger of built databases | a copy together with the environment file |
+| `infra/postgres/dictionaries/` | the search dictionary, which the search vectors and the `gbrain_db` dump depend on | a copy together with the environment file |
 | `gbrain-repo` | canonical knowledge | Git + encrypted copy of the file system |
 | `app_db` | technical and runtime state of the App | regular `pg_dump` |
 | `gbrain_db` | derived data, runtime state and facts not attached to a page | the dump is required: facts with no entity live only here and cannot be restored from Markdown |
@@ -879,6 +902,8 @@ A new volume (a lost cluster): start only Postgres with `./bin/dc up -d postgres
 
 The `gbrain_db` dump and the embedding config in `gbrain_home` are a compatible pair: the vectors in the dump belong to the model and dimension recorded in the config. So both are restored from the same point in time. Vectors of one model do not combine with the config of another.
 
+A dump taken with a dictionary language carries the dictionary's search objects, and `pg_restore` stops on them while the dictionary is not installed. On a new machine, put the copy of `postgres/dictionaries/` in place ([§9](#9-backup-matrix)) and recreate Postgres with `./bin/dc up -d --force-recreate postgres` before the restore.
+
 Read the dump back:
 
 ```bash
@@ -949,7 +974,7 @@ Knowledge is restored from `gbrain-repo` when `gbrain_db` is lost.
 ./bin/dc exec -T postgres dropdb -U postgres --if-exists gbrain_db
 ```
 
-Run `postgres/init.sql`, which creates the database with the owner `gbrain_user`, the extensions `vector`, `pg_trgm`, `pgcrypto` and the pair `auto_enable_rls()` + `auto_rls_on_create_table`; without the trigger the GBrain migrations fail ([§25](#25-troubleshooting)):
+Run `postgres/init.sql`, which creates the database with the owner `gbrain_user`, the extensions `vector`, `pg_trgm`, `pgcrypto`, the pair `auto_enable_rls()` + `auto_rls_on_create_table` and, for a dictionary language, its search configuration; without the trigger or the configuration the GBrain migrations fail ([§25](#25-troubleshooting)):
 
 ```bash
 ./bin/dc exec postgres psql -U postgres -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/init.sql
@@ -1130,23 +1155,36 @@ Dumps of `gbrain_db` taken before the change are restored only together with the
 
 ### 19. Changing the FTS language
 
-The full-text search language is `GBRAIN_FTS_LANGUAGE` in the environment file (baseline `english`). It is the configuration of the stored data: a change includes reindexing and a repeated retrieval benchmark in several languages.
+The full-text search language is `GBRAIN_FTS_LANGUAGE` in the environment file (baseline `english`): a language Postgres supports or the installation's dictionary ([§1](#search-dictionary)). It is the configuration of the stored data, and so are the dictionary's files: a new language or a changed dictionary includes reindexing and a repeated retrieval benchmark in several languages.
 
 1. Back up and stop: [§17.2](#172-backup-and-stop).
-2. Set the new value of `GBRAIN_FTS_LANGUAGE` in the environment file.
-3. Show the plan:
+2. For a dictionary language, put its files into `postgres/dictionaries/`.
+3. Set the new value of `GBRAIN_FTS_LANGUAGE` in the environment file.
+4. Recreate Postgres: on start it installs the dictionary, and it receives the new value. `restart` does neither:
+
+   ```bash
+   ./bin/dc up -d --force-recreate postgres
+   ```
+
+5. Run `postgres/init.sql`: it checks the language and builds the search configuration of a dictionary language:
+
+   ```bash
+   ./bin/dc exec postgres psql -U postgres -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/init.sql
+   ```
+
+6. Show the plan:
 
    ```bash
    ./bin/dc run --rm gbrain gbrain reindex-search-vector --dry-run
    ```
 
-4. Reindex:
+7. Reindex:
 
    ```bash
    ./bin/dc run --rm gbrain gbrain reindex-search-vector --yes
    ```
 
-5. Start and check: [§17.5](#175-start-and-check); the retrieval set from [§17.1](#171-record-the-baseline) passes in each of its languages.
+8. Start and check: [§17.5](#175-start-and-check); the retrieval set from [§17.1](#171-record-the-baseline) passes in each of its languages, and the check of the search language from [§7](#7-verification) gives one lexeme.
 
 ### 20. Changing the public address
 
@@ -1338,6 +1376,23 @@ Then restart GBrain together with the maintenance service: the start repeats `in
 ```bash
 ./bin/dc restart gbrain gbrain-maintenance
 ```
+
+#### GBrain search language
+
+One of these:
+
+- `postgres/init.sql` stops with a message that begins with `GBRAIN_FTS_LANGUAGE` and says what is wrong: the name, a missing dictionary, or a dictionary named like a language Postgres supports;
+- the GBrain migration stops with `configurable_fts_language` and `text search configuration "<name>" does not exist`;
+- a search or a write fails with `could not open dictionary file`;
+- Postgres does not start, and its log has a line that begins with `install-dictionaries:` and names the file it refused.
+
+The language needs its dictionary in place ([§1](#search-dictionary)). Put the files in place, under a name the message accepts if it refused one, then recreate Postgres and run `init.sql`, as in steps 4 and 5 of [§19](#19-changing-the-fts-language), and start GBrain:
+
+```bash
+./bin/dc up -d gbrain gbrain-maintenance
+```
+
+If `init.sql` stopped on the first start, Postgres has no roles and no databases until `init.sql` runs, so start the App afterwards as well: `./bin/dc up -d app`.
 
 #### GBrain without a Voyage key
 

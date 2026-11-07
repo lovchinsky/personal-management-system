@@ -76,6 +76,7 @@ function codeFiles(): string[] {
     '.dockerignore',
     'infra/.env.example',
     'infra/postgres/init.sql',
+    'infra/postgres/install-dictionaries.sh',
     // Only the top level of `infra/`: deeper are installation files that the test does not read.
     ...readdirSync(resolve(REPO_ROOT, 'infra'))
       .filter((name) => /^compose[^/]*\.ya?ml$/.test(name))

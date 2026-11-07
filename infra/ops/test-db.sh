@@ -21,7 +21,7 @@ case "${1:-up}" in
       exit 0
     fi
 
-    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    docker rm -f -v "$NAME" >/dev/null 2>&1 || true
     docker run -d --rm \
       --name "$NAME" \
       -e POSTGRES_USER=app \
@@ -50,7 +50,7 @@ case "${1:-up}" in
     ;;
 
   down)
-    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    docker rm -f -v "$NAME" >/dev/null 2>&1 || true
     echo "${NAME} removed."
     ;;
 

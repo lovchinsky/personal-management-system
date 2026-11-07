@@ -71,6 +71,7 @@ Each decision lives in its own ADR in `docs/decisions/`. The `Key` column holds 
 | [0047](./decisions/0047-chat-and-runner-plugins.md) | `D47` | The chat plugin and the runner plugin are separate, and domain knowledge lives once |
 | [0048](./decisions/0048-notion-workspace-contract.md) | `D48` | The physical Notion schema lives in the repository, and the App image's command and the gate build workspaces from it |
 | [0049](./decisions/0049-assistant-name.md) | `D49` | Assistant name: an optional setting carried by the channel accounts |
+| [0050](./decisions/0050-search-language.md) | `D50` | Search language: a built-in Postgres configuration or a hunspell dictionary of the installation |
 
 ---
 
